@@ -1,11 +1,115 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ru">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Bce test</title>
+<meta charset="UTF-8">
+<title>Bce — демонстрация редактора</title>
+<link rel="stylesheet" href="bce.css">
+<style>
+    body {
+        font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #121212;
+        color: #eee;
+        margin: 0;
+        padding: 20px;
+    }
+    h1 { color: #4ec9b0; margin-top: 0; }
+    .info {
+        background: #252526;
+        padding: 12px 16px;
+        border-left: 3px solid #4ec9b0;
+        margin-bottom: 20px;
+        border-radius: 4px;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+    .info code {
+        background: #1e1e1e;
+        padding: 2px 6px;
+        border-radius: 3px;
+        color: #ce9178;
+    }
+    #editor { height: 500px; }
+    .controls {
+        margin-top: 16px;
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    button {
+        background: #0e639c;
+        color: white;
+        border: none;
+        padding: 8px 14px;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 13px;
+    }
+    button:hover { background: #1177bb; }
+    #output {
+        margin-top: 16px;
+        background: #1e1e1e;
+        border: 1px solid #3c3c3c;
+        padding: 12px;
+        border-radius: 4px;
+        font-family: Consolas, monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+        max-height: 300px;
+        overflow: auto;
+    }
+</style>
 </head>
 <body>
-  
+
+<h1>📝 Редактор Bce</h1>
+
+<div class="info">
+    <b>Горячие клавиши:</b><br>
+    <code>Ctrl+C</code> / <code>Ctrl+V</code> — копировать / вставить<br>
+    <code>Ctrl+Z</code> / <code>Ctrl+Shift+Z</code> — отменить / вернуть<br>
+    <code>Alt+↑/↓</code> — переместить строку<br>
+    <code>Alt+Shift+↑/↓</code> — дублировать строку<br>
+    <code>Tab</code> — отступ (кратный 4) / отступ выделенных строк<br>
+    <b>Emmet:</b> введите <code>a</code>, <code>aa</code>, <code>pre</code>, <code>code</code>, <code>h1</code>, <code>h2</code>, <code>h3</code> и нажмите <code>Tab</code> или <code>%</code>
+</div>
+
+<div id="editor"></div>
+
+<div class="controls">
+    <button onclick="showText()">Показать текст</button>
+    <button onclick="editor.undo()">Отменить</button>
+    <button onclick="editor.redo()">Вернуть</button>
+    <button onclick="loadSample()">Загрузить пример</button>
+</div>
+
+<pre id="output"></pre>
+
+<script src="bce.js"></script>
+<script>
+    const editor = new Bce('#editor', {
+        initialText: `<h1>Привет, Bce!</h1>
+<p>Это упрощённый редактор кода.</p>
+<ul>
+    <li>Попробуйте нажать Enter — отступ сохранится</li>
+    <li>Введите <code>h2</code> и нажмите Tab</li>
+    <li>Выделите несколько строк и нажмите Tab</li>
+</ul>`
+    });
+
+    function showText() {
+        document.getElementById('output').textContent = editor.getText();
+    }
+
+    function loadSample() {
+        editor.setText(`<div class="container">
+    <h1>Заголовок</h1>
+    <p>Абзац текста с <a href="#">ссылкой</a>.</p>
+    <pre><code>function hello() {
+    console.log("Hello!");
+}</code></pre>
+</div>`);
+    }
+</script>
+
 </body>
 </html>
