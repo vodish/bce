@@ -25,10 +25,11 @@ class Bce {
     this.maxHistory = 200;
     this.ignoreNextInput = false;
 
-    // ИСПОЛЬЗУЕМ 'code' ВМЕСТО 'key' ДЛЯ НЕЗАВИСИМОСТИ ОТ РАСКЛАДКИ (например, русская 'Я' вместо 'Z')
+    // УДАЛЕНО: { code: 'KeyV', ctrl: true, shift: false, action: 'paste' }
+    // Мы больше не перехватываем Ctrl+V в keydown, чтобы избежать запроса разрешений.
+    // Вставка будет обрабатываться нативным событием 'paste', которое безопасно.
     this.keyBindings = [
       { code: "KeyC", ctrl: true, shift: false, action: "copy" },
-      { code: "KeyV", ctrl: true, shift: false, action: "paste" },
       { code: "KeyZ", ctrl: true, shift: false, action: "undo" },
       { code: "KeyZ", ctrl: true, shift: true, action: "redo" },
       { code: "ArrowDown", alt: true, shift: true, action: "duplicateDown" },
@@ -99,9 +100,8 @@ class Bce {
   bindEvents() {
     this.content.addEventListener("keydown", (e) => this.onKeyDown(e));
     this.content.addEventListener("input", (e) => this.onInput(e));
-    this.content.addEventListener("paste", (e) => this.onPaste(e));
+    this.content.addEventListener("paste", (e) => this.onPaste(e)); // Это событие обрабатывает вставку безопасно
 
-    // === КРИТИЧЕСКИ ВАЖНО: Перехват нативного Undo/Redo браузера ===
     this.content.addEventListener("beforeinput", (e) => {
       if (e.inputType === "historyUndo") {
         e.preventDefault();
@@ -514,8 +514,6 @@ class Bce {
     switch (action) {
       case "copy":
         return this.actionCopy();
-      case "paste":
-        return this.actionPaste();
       case "undo":
         return this.undo();
       case "redo":
@@ -536,15 +534,6 @@ class Bce {
     if (!cursor) return;
     const text = this.getSelectedText(cursor);
     if (text) navigator.clipboard.writeText(text).catch(() => {});
-  }
-
-  actionPaste() {
-    navigator.clipboard
-      .readText()
-      .then((text) => {
-        if (text) this.insertText(text.replace(/\r\n?/g, "\n"));
-      })
-      .catch(() => {});
   }
 
   actionDuplicate(dir) {
@@ -634,7 +623,6 @@ class Bce {
     return true;
   }
 
-  // === ОБНОВЛЕННАЯ ПРОВЕРКА СОЧЕТАНИЙ КЛАВИШ ===
   matchBinding(e) {
     for (const b of this.keyBindings) {
       const ctrlOk = b.ctrl
@@ -643,7 +631,6 @@ class Bce {
       const shiftOk = b.shift ? e.shiftKey : !e.shiftKey;
       const altOk = b.alt ? e.altKey : !e.altKey;
 
-      // Используем e.code для букв (например, 'KeyZ'), чтобы не зависеть от раскладки (русская 'Я' и т.д.)
       const keyMatch = b.code
         ? e.code === b.code
         : e.key.toLowerCase() === b.key.toLowerCase();
@@ -852,10 +839,18 @@ class Bce {
     this.pushHistory();
   }
 
+  // === БЕЗОПАСНАЯ ВСТАВКА БЕЗ ЗАПРОСА РАЗРЕШЕНИЙ ===
   onPaste(e) {
-    e.preventDefault();
+    e.preventDefault(); // Отменяем стандартную вставку браузера
+
+    // Получаем текст напрямую из события paste. Это НЕ требует разрешений браузера.
     const text = (e.clipboardData || window.clipboardData).getData("text");
-    if (text) this.insertText(text.replace(/\r\n?/g, "\n"));
+
+    if (text) {
+      // Используем наш кастомный метод, который корректно разобьет текст на строки,
+      // создаст новые ID и добавит запись в историю
+      this.insertText(text.replace(/\r\n?/g, "\n"));
+    }
   }
 }
 
