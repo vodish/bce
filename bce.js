@@ -25,15 +25,16 @@ class Bce {
     this.maxHistory = 200;
     this.ignoreNextInput = false;
 
+    // ИСПОЛЬЗУЕМ 'code' ВМЕСТО 'key' ДЛЯ НЕЗАВИСИМОСТИ ОТ РАСКЛАДКИ (например, русская 'Я' вместо 'Z')
     this.keyBindings = [
-      { key: "c", ctrl: true, shift: false, action: "copy" },
-      { key: "v", ctrl: true, shift: false, action: "paste" },
-      { key: "z", ctrl: true, shift: false, action: "undo" },
-      { key: "z", ctrl: true, shift: true, action: "redo" },
-      { key: "ArrowDown", alt: true, shift: true, action: "duplicateDown" },
-      { key: "ArrowUp", alt: true, shift: true, action: "duplicateUp" },
-      { key: "ArrowDown", alt: true, shift: false, action: "moveDown" },
-      { key: "ArrowUp", alt: true, shift: false, action: "moveUp" },
+      { code: "KeyC", ctrl: true, shift: false, action: "copy" },
+      { code: "KeyV", ctrl: true, shift: false, action: "paste" },
+      { code: "KeyZ", ctrl: true, shift: false, action: "undo" },
+      { code: "KeyZ", ctrl: true, shift: true, action: "redo" },
+      { code: "ArrowDown", alt: true, shift: true, action: "duplicateDown" },
+      { code: "ArrowUp", alt: true, shift: true, action: "duplicateUp" },
+      { code: "ArrowDown", alt: true, shift: false, action: "moveDown" },
+      { code: "ArrowUp", alt: true, shift: false, action: "moveUp" },
     ];
 
     this.emmet = {
@@ -99,6 +100,17 @@ class Bce {
     this.content.addEventListener("keydown", (e) => this.onKeyDown(e));
     this.content.addEventListener("input", (e) => this.onInput(e));
     this.content.addEventListener("paste", (e) => this.onPaste(e));
+
+    // === КРИТИЧЕСКИ ВАЖНО: Перехват нативного Undo/Redo браузера ===
+    this.content.addEventListener("beforeinput", (e) => {
+      if (e.inputType === "historyUndo") {
+        e.preventDefault();
+        this.undo();
+      } else if (e.inputType === "historyRedo") {
+        e.preventDefault();
+        this.redo();
+      }
+    });
 
     this.content.addEventListener("keyup", () => this.updateActiveLine());
     this.content.addEventListener("mouseup", () => this.updateActiveLine());
@@ -622,6 +634,7 @@ class Bce {
     return true;
   }
 
+  // === ОБНОВЛЕННАЯ ПРОВЕРКА СОЧЕТАНИЙ КЛАВИШ ===
   matchBinding(e) {
     for (const b of this.keyBindings) {
       const ctrlOk = b.ctrl
@@ -630,12 +643,12 @@ class Bce {
       const shiftOk = b.shift ? e.shiftKey : !e.shiftKey;
       const altOk = b.alt ? e.altKey : !e.altKey;
 
-      if (
-        e.key.toLowerCase() === b.key.toLowerCase() &&
-        ctrlOk &&
-        shiftOk &&
-        altOk
-      ) {
+      // Используем e.code для букв (например, 'KeyZ'), чтобы не зависеть от раскладки (русская 'Я' и т.д.)
+      const keyMatch = b.code
+        ? e.code === b.code
+        : e.key.toLowerCase() === b.key.toLowerCase();
+
+      if (keyMatch && ctrlOk && shiftOk && altOk) {
         return b.action;
       }
     }
@@ -671,7 +684,6 @@ class Bce {
     }
   }
 
-  // === ОБНОВЛЕННЫЙ МЕТОД ДЛЯ TAB / SHIFT+TAB ===
   handleTab(shift) {
     const cursor = this.getCursor();
     if (!cursor) return;
@@ -711,30 +723,36 @@ class Bce {
       const line = this.lines[cursor.startLine];
 
       if (shift) {
-        // SHIFT+TAB: Удаляем пробелы в начале строки (стандартный unindent)
-        const leading = this.getLeadingSpaces(line.text);
+        const beforeCursor = line.text.substring(0, cursor.startOffset);
 
-        // Удаляем до 4 пробелов (один уровень отступа).
-        // Если нужно строго "только если их количество кратно 4", замените на:
-        // const removeCount = Math.floor(leading.length / this.options.tabSize) * this.options.tabSize;
-        const removeCount = Math.min(leading.length, this.options.tabSize);
+        if (!/^ *$/.test(beforeCursor)) {
+          return;
+        }
 
-        if (removeCount > 0) {
-          line.text = line.text.substring(removeCount);
+        const spacesToRemove = Math.min(
+          beforeCursor.length,
+          this.options.tabSize,
+        );
+
+        if (spacesToRemove > 0) {
+          const newBeforeCursor = beforeCursor.substring(
+            0,
+            beforeCursor.length - spacesToRemove,
+          );
+          const afterCursor = line.text.substring(cursor.startOffset);
+
+          line.text = newBeforeCursor + afterCursor;
+
           this.render();
-
-          // Сдвигаем курсор влево, но не даем ему уйти в отрицательные значения
-          const newOffset = Math.max(0, cursor.startOffset - removeCount);
           this.setCursor({
             startLine: cursor.startLine,
-            startOffset: newOffset,
+            startOffset: cursor.startOffset - spacesToRemove,
             endLine: cursor.startLine,
-            endOffset: newOffset,
+            endOffset: cursor.startOffset - spacesToRemove,
           });
           this.pushHistory();
         }
       } else {
-        // TAB: Добавляем пробелы
         const leading = this.getLeadingSpaces(line.text);
         const currentLen = leading.length;
         const target =
