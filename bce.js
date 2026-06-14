@@ -132,7 +132,6 @@ class Bce {
       div.dataset.lineId = line.id;
       div.dataset.lineIndex = idx;
 
-      // ИСПРАВЛЕНИЕ: используем только <br> для пустых строк, чтобы избежать двойной высоты
       div.innerHTML = line.text === "" ? "<br>" : this.highlight(line.text);
 
       this.content.appendChild(div);
@@ -672,6 +671,7 @@ class Bce {
     }
   }
 
+  // === ОБНОВЛЕННЫЙ МЕТОД ДЛЯ TAB / SHIFT+TAB ===
   handleTab(shift) {
     const cursor = this.getCursor();
     if (!cursor) return;
@@ -709,25 +709,52 @@ class Bce {
       this.pushHistory();
     } else {
       const line = this.lines[cursor.startLine];
-      const leading = this.getLeadingSpaces(line.text);
-      const currentLen = leading.length;
-      const target =
-        Math.ceil((currentLen + 1) / this.options.tabSize) *
-        this.options.tabSize;
-      const add = " ".repeat(target - currentLen);
 
-      line.text =
-        line.text.substring(0, cursor.startOffset) +
-        add +
-        line.text.substring(cursor.startOffset);
-      this.render();
-      this.setCursor({
-        startLine: cursor.startLine,
-        startOffset: cursor.startOffset + add.length,
-        endLine: cursor.startLine,
-        endOffset: cursor.startOffset + add.length,
-      });
-      this.pushHistory();
+      if (shift) {
+        // SHIFT+TAB: Удаляем пробелы в начале строки (стандартный unindent)
+        const leading = this.getLeadingSpaces(line.text);
+
+        // Удаляем до 4 пробелов (один уровень отступа).
+        // Если нужно строго "только если их количество кратно 4", замените на:
+        // const removeCount = Math.floor(leading.length / this.options.tabSize) * this.options.tabSize;
+        const removeCount = Math.min(leading.length, this.options.tabSize);
+
+        if (removeCount > 0) {
+          line.text = line.text.substring(removeCount);
+          this.render();
+
+          // Сдвигаем курсор влево, но не даем ему уйти в отрицательные значения
+          const newOffset = Math.max(0, cursor.startOffset - removeCount);
+          this.setCursor({
+            startLine: cursor.startLine,
+            startOffset: newOffset,
+            endLine: cursor.startLine,
+            endOffset: newOffset,
+          });
+          this.pushHistory();
+        }
+      } else {
+        // TAB: Добавляем пробелы
+        const leading = this.getLeadingSpaces(line.text);
+        const currentLen = leading.length;
+        const target =
+          Math.ceil((currentLen + 1) / this.options.tabSize) *
+          this.options.tabSize;
+        const add = " ".repeat(target - currentLen);
+
+        line.text =
+          line.text.substring(0, cursor.startOffset) +
+          add +
+          line.text.substring(cursor.startOffset);
+        this.render();
+        this.setCursor({
+          startLine: cursor.startLine,
+          startOffset: cursor.startOffset + add.length,
+          endLine: cursor.startLine,
+          endOffset: cursor.startOffset + add.length,
+        });
+        this.pushHistory();
+      }
     }
   }
 
