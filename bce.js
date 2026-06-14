@@ -13,6 +13,7 @@ class Bce {
       {
         tabSize: 4,
         initialText: "",
+        showLineNumbers: false,
       },
       options,
     );
@@ -24,12 +25,11 @@ class Bce {
     this.maxHistory = 200;
     this.ignoreNextInput = false;
 
-    // === ОБНОВЛЁННЫЕ СОЧЕТАНИЯ КЛАВИШ ===
     this.keyBindings = [
       { key: "c", ctrl: true, shift: false, action: "copy" },
       { key: "v", ctrl: true, shift: false, action: "paste" },
-      { key: "z", ctrl: true, shift: false, action: "undo" }, // Ctrl+Z
-      { key: "z", ctrl: true, shift: true, action: "redo" }, // Ctrl+Shift+Z
+      { key: "z", ctrl: true, shift: false, action: "undo" },
+      { key: "z", ctrl: true, shift: true, action: "redo" },
       { key: "ArrowDown", alt: true, shift: true, action: "duplicateDown" },
       { key: "ArrowUp", alt: true, shift: true, action: "duplicateUp" },
       { key: "ArrowDown", alt: true, shift: false, action: "moveDown" },
@@ -61,6 +61,10 @@ class Bce {
 
   build() {
     this.container.classList.add("bce-editor");
+    if (!this.options.showLineNumbers) {
+      this.container.classList.add("bce-no-gutter");
+    }
+
     this.container.innerHTML = "";
 
     this.wrapper = document.createElement("div");
@@ -79,6 +83,16 @@ class Bce {
     this.wrapper.appendChild(this.gutter);
     this.wrapper.appendChild(this.content);
     this.container.appendChild(this.wrapper);
+  }
+
+  setShowLineNumbers(show) {
+    this.options.showLineNumbers = show;
+    if (show) {
+      this.container.classList.remove("bce-no-gutter");
+    } else {
+      this.container.classList.add("bce-no-gutter");
+    }
+    this.render();
   }
 
   bindEvents() {
@@ -117,8 +131,10 @@ class Bce {
       div.className = "bce-line";
       div.dataset.lineId = line.id;
       div.dataset.lineIndex = idx;
-      if (line.text === "") div.classList.add("bce-empty");
-      div.innerHTML = this.highlight(line.text) || "<br>";
+
+      // ИСПРАВЛЕНИЕ: используем только <br> для пустых строк, чтобы избежать двойной высоты
+      div.innerHTML = line.text === "" ? "<br>" : this.highlight(line.text);
+
       this.content.appendChild(div);
     });
 
@@ -127,9 +143,7 @@ class Bce {
     this.resize();
   }
 
-  resize() {
-    // Ширина и высота контролируются CSS
-  }
+  resize() {}
 
   updateActiveLine() {
     const lines = this.content.querySelectorAll(".bce-line");
@@ -609,7 +623,6 @@ class Bce {
     return true;
   }
 
-  // === ИСПРАВЛЕННЫЙ МЕТОД ПРОВЕРКИ СОЧЕТАНИЙ ===
   matchBinding(e) {
     for (const b of this.keyBindings) {
       const ctrlOk = b.ctrl
@@ -618,7 +631,6 @@ class Bce {
       const shiftOk = b.shift ? e.shiftKey : !e.shiftKey;
       const altOk = b.alt ? e.altKey : !e.altKey;
 
-      // e.key.toLowerCase() гарантирует, что 'Z' (при зажатом Shift) и 'z' будут считаться одинаковыми
       if (
         e.key.toLowerCase() === b.key.toLowerCase() &&
         ctrlOk &&
@@ -634,7 +646,7 @@ class Bce {
   onKeyDown(e) {
     const action = this.matchBinding(e);
     if (action) {
-      e.preventDefault(); // Отменяем стандартное поведение браузера
+      e.preventDefault();
       this.doAction(action);
       return;
     }

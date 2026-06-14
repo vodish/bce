@@ -4,7 +4,7 @@
     --bce-gutter-bg: #252526;
     --bce-gutter-fg: #858585;
     --bce-selection: #264f78;
-    --bce-line-hover: #2a2d2e;
+    --bce-active-line-bg: #2a2d2e;
     --bce-tag: #569cd6;
     --bce-attr-name: #9cdcfe;
     --bce-attr-value: #ce9178;
@@ -21,17 +21,18 @@
     color: var(--bce-fg);
     border: 1px solid #3c3c3c;
     border-radius: 4px;
-    
-    /* === ИЗМЕНЕНИЯ ЗДЕСЬ === */
-    overflow: visible;       /* Убираем внутренние скроллбары */
-    height: auto;            /* Высота подстраивается под контент */
-    width: 100%;             /* Занимает всю ширину родителя */
-    box-sizing: border-box;  /* Чтобы border не ломал 100% ширины */
+    overflow: visible;
+    height: auto;
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.bce-editor.bce-no-gutter .bce-gutter {
+    display: none;
 }
 
 .bce-container {
     display: flex;
-    /* Убрали min-width: fit-content, чтобы не распирать родителя */
     width: 100%;
 }
 
@@ -51,15 +52,18 @@
     line-height: 21px;
 }
 
+.bce-gutter-line.bce-active {
+    color: var(--bce-fg);
+    background: var(--bce-active-line-bg);
+}
+
 .bce-content {
     flex: 1;
     padding: 8px 12px;
     outline: none;
-    width: 100%;             /* Занимает всё оставшееся пространство */
-    
-    /* === ИЗМЕНЕНИЯ ЗДЕСЬ === */
-    white-space: pre-wrap;   /* Сохраняет пробелы, но переносит длинные строки */
-    word-wrap: break-word;   /* Переносит слова, если они не влезают */
+    width: 100%;
+    white-space: pre-wrap;
+    word-wrap: break-word;
     overflow-wrap: break-word;
     tab-size: 4;
     -moz-tab-size: 4;
@@ -69,22 +73,17 @@
     min-height: 21px;
     line-height: 21px;
     position: relative;
-    
-    /* === ИЗМЕНЕНИЯ ЗДЕСЬ === */
-    white-space: pre-wrap;   /* Гарантирует перенос с сохранением визуального отступа */
+    white-space: pre-wrap;
     word-wrap: break-word;
     overflow-wrap: break-word;
+    margin: 0;
+    padding: 0;
 }
 
-.bce-line:hover {
-    background: var(--bce-line-hover);
+.bce-line.bce-active {
+    background: var(--bce-active-line-bg);
 }
 
-.bce-line.bce-empty::after {
-    content: ' ';
-}
-
-/* Подсветка */
 .bce-tag { color: var(--bce-tag); }
 .bce-attr-name { color: var(--bce-attr-name); }
 .bce-attr-value { color: var(--bce-attr-value); }

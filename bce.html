@@ -29,7 +29,6 @@
         color: #ce9178;
     }
     #editor { 
-        /* Убираем фиксированную высоту, чтобы редактор рос автоматически */
         min-height: 200px; 
     }
     .controls {
@@ -37,6 +36,7 @@
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
+        align-items: center;
     }
     button {
         background: #0e639c;
@@ -51,6 +51,19 @@
     button:hover { background: #1177bb; }
     button.secondary { background: #3c3c3c; }
     button.secondary:hover { background: #4c4c4c; }
+    
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        cursor: pointer;
+        margin-left: auto; /* Сдвигает чекбокс вправо */
+        user-select: none;
+    }
+    .checkbox-label input {
+        cursor: pointer;
+    }
     
     #output {
         margin-top: 16px;
@@ -85,38 +98,45 @@
 
 <div class="controls">
     <button onclick="showText()">Показать весь текст</button>
-    <button onclick="loadLines()">Строки</button> <!-- НОВАЯ КНОПКА -->
+    <button onclick="loadLines()">Строки (JSON)</button>
     <button class="secondary" onclick="editor.undo()">Отменить</button>
     <button class="secondary" onclick="editor.redo()">Вернуть</button>
     <button class="secondary" onclick="loadSample()">Загрузить пример</button>
+    
+    <!-- ЧЕКБОКС ДЛЯ УПРАВЛЕНИЯ НОМЕРАМИ СТРОК -->
+    <label class="checkbox-label">
+        <input type="checkbox" id="toggleLines" onchange="toggleLineNumbers(this.checked)">
+        Показывать номера строк
+    </label>
 </div>
 
 <pre id="output">Здесь появится результат...</pre>
 
 <script src="bce.js"></script>
 <script>
-    // Инициализация редактора
+    // Инициализация редактора (showLineNumbers по умолчанию false, но можно указать явно)
     const editor = new Bce('#editor', {
         initialText: `<h1>Привет, Bce!</h1>
 <p>Это упрощённый редактор кода.</p>
 <ul>
     <li>Попробуйте нажать Enter — отступ сохранится</li>
     <li>Введите <code>h2</code> и нажмите Tab</li>
-    <li>Выделите несколько строк и нажмите Tab</li>
-</ul>`
+</ul>`,
+        showLineNumbers: false // Явно указываем, что по умолчанию скрыты
     });
 
-    // Показать весь текст одной строкой с \n
     function showText() {
         document.getElementById('output').textContent = editor.getText();
     }
 
-    // === НОВАЯ ФУНКЦИЯ: Вывод массива строк с ID ===
     function loadLines() {
         const lines = editor.getLines();
-        // Форматируем в красивый JSON с отступами в 2 пробела
         const formatted = JSON.stringify(lines, null, 2);
         document.getElementById('output').textContent = formatted;
+    }
+
+    function toggleLineNumbers(show) {
+        editor.setShowLineNumbers(show);
     }
 
     function loadSample() {
