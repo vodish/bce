@@ -21,14 +21,18 @@
     color: var(--bce-fg);
     border: 1px solid #3c3c3c;
     border-radius: 4px;
-    overflow: auto;
-    max-width: 100%;
-    min-height: 200px;
+    
+    /* === ИЗМЕНЕНИЯ ЗДЕСЬ === */
+    overflow: visible;       /* Убираем внутренние скроллбары */
+    height: auto;            /* Высота подстраивается под контент */
+    width: 100%;             /* Занимает всю ширину родителя */
+    box-sizing: border-box;  /* Чтобы border не ломал 100% ширины */
 }
 
 .bce-container {
     display: flex;
-    min-width: fit-content;
+    /* Убрали min-width: fit-content, чтобы не распирать родителя */
+    width: 100%;
 }
 
 .bce-gutter {
@@ -51,10 +55,12 @@
     flex: 1;
     padding: 8px 12px;
     outline: none;
-    min-width: 0;
-    white-space: pre;
-    overflow-wrap: anywhere;
-    word-break: break-all;
+    width: 100%;             /* Занимает всё оставшееся пространство */
+    
+    /* === ИЗМЕНЕНИЯ ЗДЕСЬ === */
+    white-space: pre-wrap;   /* Сохраняет пробелы, но переносит длинные строки */
+    word-wrap: break-word;   /* Переносит слова, если они не влезают */
+    overflow-wrap: break-word;
     tab-size: 4;
     -moz-tab-size: 4;
 }
@@ -63,9 +69,11 @@
     min-height: 21px;
     line-height: 21px;
     position: relative;
-    white-space: pre-wrap;
+    
+    /* === ИЗМЕНЕНИЯ ЗДЕСЬ === */
+    white-space: pre-wrap;   /* Гарантирует перенос с сохранением визуального отступа */
     word-wrap: break-word;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
 }
 
 .bce-line:hover {

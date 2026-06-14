@@ -123,14 +123,14 @@ class Bce {
   }
 
   resize() {
-    const lines = this.content.querySelectorAll(".bce-line");
-    let maxWidth = 0;
-    lines.forEach((l) => {
-      const w = l.scrollWidth;
-      if (w > maxWidth) maxWidth = w;
-    });
-    this.content.style.minWidth =
-      Math.max(maxWidth + 40, this.content.clientWidth) + "px";
+    // const lines = this.content.querySelectorAll(".bce-line");
+    // let maxWidth = 0;
+    // lines.forEach((l) => {
+    //   const w = l.scrollWidth;
+    //   if (w > maxWidth) maxWidth = w;
+    // });
+    // this.content.style.minWidth =
+    //   Math.max(maxWidth + 40, this.content.clientWidth) + "px";
   }
 
   // ---------- Подсветка HTML ----------
