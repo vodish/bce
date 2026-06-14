@@ -1,8 +1,5 @@
 "use strict";
 
-/**
- * Bce — упрощённый редактор кода
- */
 class Bce {
   constructor(container, options = {}) {
     this.container =
@@ -25,20 +22,20 @@ class Bce {
     this.history = [];
     this.historyIndex = -1;
     this.maxHistory = 200;
+    this.ignoreNextInput = false;
 
-    // Сочетания клавиш
+    // === ОБНОВЛЁННЫЕ СОЧЕТАНИЯ КЛАВИШ ===
     this.keyBindings = [
-      { key: "c", ctrl: true, action: "copy" },
-      { key: "v", ctrl: true, action: "paste" },
-      { key: "z", ctrl: true, shift: false, action: "undo" },
-      { key: "z", ctrl: true, shift: true, action: "redo" },
+      { key: "c", ctrl: true, shift: false, action: "copy" },
+      { key: "v", ctrl: true, shift: false, action: "paste" },
+      { key: "z", ctrl: true, shift: false, action: "undo" }, // Ctrl+Z
+      { key: "z", ctrl: true, shift: true, action: "redo" }, // Ctrl+Shift+Z
       { key: "ArrowDown", alt: true, shift: true, action: "duplicateDown" },
       { key: "ArrowUp", alt: true, shift: true, action: "duplicateUp" },
       { key: "ArrowDown", alt: true, shift: false, action: "moveDown" },
       { key: "ArrowUp", alt: true, shift: false, action: "moveUp" },
     ];
 
-    // Emmet-сниппеты (| — позиция курсора)
     this.emmet = {
       a: '<a href="|"></a>',
       aa: '<a href="|" target="_blank"></a>',
@@ -62,7 +59,6 @@ class Bce {
     }
   }
 
-  // ---------- DOM ----------
   build() {
     this.container.classList.add("bce-editor");
     this.container.innerHTML = "";
@@ -85,7 +81,16 @@ class Bce {
     this.container.appendChild(this.wrapper);
   }
 
-  // ---------- Строки ----------
+  bindEvents() {
+    this.content.addEventListener("keydown", (e) => this.onKeyDown(e));
+    this.content.addEventListener("input", (e) => this.onInput(e));
+    this.content.addEventListener("paste", (e) => this.onPaste(e));
+
+    this.content.addEventListener("keyup", () => this.updateActiveLine());
+    this.content.addEventListener("mouseup", () => this.updateActiveLine());
+    this.content.addEventListener("click", () => this.updateActiveLine());
+  }
+
   newId() {
     return ++this.lineIdCounter;
   }
@@ -96,7 +101,6 @@ class Bce {
     return line;
   }
 
-  // ---------- Рендер ----------
   render() {
     const cursor = this.getCursor();
 
@@ -119,21 +123,35 @@ class Bce {
     });
 
     if (cursor) this.setCursor(cursor);
+    this.updateActiveLine();
     this.resize();
   }
 
   resize() {
-    // const lines = this.content.querySelectorAll(".bce-line");
-    // let maxWidth = 0;
-    // lines.forEach((l) => {
-    //   const w = l.scrollWidth;
-    //   if (w > maxWidth) maxWidth = w;
-    // });
-    // this.content.style.minWidth =
-    //   Math.max(maxWidth + 40, this.content.clientWidth) + "px";
+    // Ширина и высота контролируются CSS
   }
 
-  // ---------- Подсветка HTML ----------
+  updateActiveLine() {
+    const lines = this.content.querySelectorAll(".bce-line");
+    lines.forEach((line) => line.classList.remove("bce-active"));
+
+    const gutterLines = this.gutter.querySelectorAll(".bce-gutter-line");
+    gutterLines.forEach((gl) => gl.classList.remove("bce-active"));
+
+    const cursor = this.getCursor();
+    if (
+      cursor &&
+      cursor.startLine >= 0 &&
+      cursor.startLine < this.lines.length
+    ) {
+      const activeLineEl = this.content.children[cursor.startLine];
+      if (activeLineEl) activeLineEl.classList.add("bce-active");
+
+      const activeGutterEl = this.gutter.children[cursor.startLine];
+      if (activeGutterEl) activeGutterEl.classList.add("bce-active");
+    }
+  }
+
   highlight(text) {
     if (!text) return "";
     let safe = text
@@ -174,60 +192,72 @@ class Bce {
         );
       },
     );
-
     return safe;
   }
 
-  // ---------- Курсор ----------
   getCursor() {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return null;
     const range = sel.getRangeAt(0);
 
-    const findLineInfo = (node, offset) => {
+    const getNodeInfo = (node, offset) => {
       let lineEl = node;
-      while (lineEl && !lineEl.classList?.contains("bce-line")) {
+      while (
+        lineEl &&
+        lineEl !== this.content &&
+        !lineEl.classList?.contains("bce-line")
+      ) {
         lineEl = lineEl.parentNode;
       }
-      if (!lineEl || !this.content.contains(lineEl)) return null;
+
+      if (!lineEl || lineEl === this.content) {
+        lineEl = this.content.lastElementChild;
+        if (!lineEl || !lineEl.classList.contains("bce-line")) {
+          return { lineIndex: 0, offset: 0 };
+        }
+        return {
+          lineIndex: parseInt(lineEl.dataset.lineIndex, 10),
+          offset: lineEl.textContent.length,
+        };
+      }
 
       const lineIndex = parseInt(lineEl.dataset.lineIndex, 10);
       let charOffset = 0;
+      let found = false;
 
-      const walk = (n, stopNode, stopOffset) => {
-        if (n === stopNode) {
-          if (stopNode.nodeType === Node.TEXT_NODE) {
-            charOffset += stopOffset;
-          } else {
-            for (let i = 0; i < stopOffset; i++) {
-              charOffset += this.textLength(stopNode.childNodes[i]);
-            }
-          }
-          return true;
+      const walker = document.createTreeWalker(
+        lineEl,
+        NodeFilter.SHOW_TEXT,
+        null,
+        false,
+      );
+      let currentNode = walker.nextNode();
+
+      while (currentNode) {
+        if (currentNode === node) {
+          charOffset += offset;
+          found = true;
+          break;
         }
-        if (n.nodeType === Node.TEXT_NODE) {
-          charOffset += n.textContent.length;
-          return false;
-        }
-        for (const child of n.childNodes) {
-          if (walk(child, stopNode, stopOffset)) return true;
-        }
-        return false;
-      };
-      walk(lineEl, node, offset);
+        charOffset += currentNode.textContent.length;
+        currentNode = walker.nextNode();
+      }
+
+      if (!found) {
+        charOffset = lineEl.textContent.length;
+      }
 
       return { lineIndex, offset: charOffset };
     };
 
-    const start = findLineInfo(range.startContainer, range.startOffset);
-    const end = findLineInfo(range.endContainer, range.endOffset);
+    const start = getNodeInfo(range.startContainer, range.startOffset);
+    const end = getNodeInfo(range.endContainer, range.endOffset);
 
-    if (!start) return null;
     return {
       startLine: start.lineIndex,
       startOffset: start.offset,
-      endLine: end ? end.lineIndex : start.lineIndex,
-      endOffset: end ? end.offset : start.offset,
+      endLine: end.lineIndex,
+      endOffset: end.offset,
     };
   }
 
@@ -299,7 +329,6 @@ class Bce {
     }
   }
 
-  // ---------- История ----------
   pushHistory() {
     this.history = this.history.slice(0, this.historyIndex + 1);
     const snapshot = {
@@ -333,7 +362,6 @@ class Bce {
     }
   }
 
-  // ---------- Текст ----------
   getText() {
     return this.lines.map((l) => l.text).join("\n");
   }
@@ -350,7 +378,6 @@ class Bce {
     return this.lines.map((line) => ({ id: line.id, text: line.text }));
   }
 
-  // ---------- Вспомогательные ----------
   getLeadingSpaces(text) {
     const m = text.match(/^[ \t]*/);
     return m ? m[0] : "";
@@ -458,7 +485,6 @@ class Bce {
     this.pushHistory();
   }
 
-  // ---------- Действия ----------
   doAction(action) {
     switch (action) {
       case "copy":
@@ -543,7 +569,6 @@ class Bce {
     this.pushHistory();
   }
 
-  // ---------- Emmet ----------
   tryEmmet() {
     const cursor = this.getCursor();
     if (!cursor) return false;
@@ -584,13 +609,7 @@ class Bce {
     return true;
   }
 
-  // ---------- События ----------
-  bindEvents() {
-    this.content.addEventListener("keydown", (e) => this.onKeyDown(e));
-    this.content.addEventListener("input", (e) => this.onInput(e));
-    this.content.addEventListener("paste", (e) => this.onPaste(e));
-  }
-
+  // === ИСПРАВЛЕННЫЙ МЕТОД ПРОВЕРКИ СОЧЕТАНИЙ ===
   matchBinding(e) {
     for (const b of this.keyBindings) {
       const ctrlOk = b.ctrl
@@ -598,7 +617,16 @@ class Bce {
         : !(e.ctrlKey || e.metaKey);
       const shiftOk = b.shift ? e.shiftKey : !e.shiftKey;
       const altOk = b.alt ? e.altKey : !e.altKey;
-      if (e.key === b.key && ctrlOk && shiftOk && altOk) return b.action;
+
+      // e.key.toLowerCase() гарантирует, что 'Z' (при зажатом Shift) и 'z' будут считаться одинаковыми
+      if (
+        e.key.toLowerCase() === b.key.toLowerCase() &&
+        ctrlOk &&
+        shiftOk &&
+        altOk
+      ) {
+        return b.action;
+      }
     }
     return null;
   }
@@ -606,7 +634,7 @@ class Bce {
   onKeyDown(e) {
     const action = this.matchBinding(e);
     if (action) {
-      e.preventDefault();
+      e.preventDefault(); // Отменяем стандартное поведение браузера
       this.doAction(action);
       return;
     }
@@ -616,8 +644,9 @@ class Bce {
         e.preventDefault();
         return;
       }
-      if (e.key === "Tab") {
+      if (e.key === "Tab" || e.key === "tab") {
         e.preventDefault();
+        this.ignoreNextInput = true;
         this.handleTab(e.shiftKey);
         return;
       }
@@ -625,6 +654,7 @@ class Bce {
 
     if (e.key === "Enter") {
       e.preventDefault();
+      this.ignoreNextInput = true;
       this.handleEnter();
       return;
     }
@@ -690,51 +720,77 @@ class Bce {
   }
 
   handleEnter() {
-    const cursor = this.getCursor();
-    if (!cursor) return;
+    let cursor = this.getCursor();
 
-    this.deleteSelection(cursor);
-    const c = this.getCursor() || cursor;
+    if (!cursor || cursor.startLine >= this.lines.length) {
+      const lastIdx = Math.max(0, this.lines.length - 1);
+      cursor = {
+        startLine: lastIdx,
+        startOffset: lastIdx >= 0 ? this.lines[lastIdx].text.length : 0,
+        endLine: lastIdx,
+        endOffset: lastIdx >= 0 ? this.lines[lastIdx].text.length : 0,
+      };
+    }
 
-    const line = this.lines[c.startLine];
-    const before = line.text.substring(0, c.startOffset);
-    const after = line.text.substring(c.startOffset);
+    if (
+      cursor.startLine !== cursor.endLine ||
+      cursor.startOffset !== cursor.endOffset
+    ) {
+      this.deleteSelection(cursor);
+      cursor = this.getCursor() || cursor;
+    }
 
+    const line = this.lines[cursor.startLine];
+    const before = line.text.substring(0, cursor.startOffset);
+    const after = line.text.substring(cursor.startOffset);
     const indent = this.getLeadingSpaces(before);
 
     line.text = before;
     const newLine = { id: this.newId(), text: indent + after };
-    this.lines.splice(c.startLine + 1, 0, newLine);
+
+    this.lines.splice(cursor.startLine + 1, 0, newLine);
 
     this.render();
+
     const newOffset = indent.length;
     this.setCursor({
-      startLine: c.startLine + 1,
+      startLine: cursor.startLine + 1,
       startOffset: newOffset,
-      endLine: c.startLine + 1,
+      endLine: cursor.startLine + 1,
       endOffset: newOffset,
     });
+
     this.pushHistory();
   }
 
   onInput(e) {
-    const lineEls = this.content.querySelectorAll(".bce-line");
-    const oldLines = this.lines;
-    const newLines = [];
+    if (this.ignoreNextInput) {
+      this.ignoreNextInput = false;
+      return;
+    }
 
-    lineEls.forEach((el, idx) => {
+    const lineEls = this.content.querySelectorAll(".bce-line");
+    const newLines = [];
+    const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
+
+    lineEls.forEach((el) => {
       const text = el.textContent || "";
-      if (idx < oldLines.length) {
-        newLines.push({ id: oldLines[idx].id, text });
+      const lineId = parseInt(el.dataset.lineId, 10);
+
+      if (lineId && oldLinesMap.has(lineId)) {
+        newLines.push({ id: lineId, text });
       } else {
         newLines.push({ id: this.newId(), text });
       }
     });
+
     this.lines = newLines;
 
     const cursor = this.getCursor();
     this.render();
-    if (cursor) this.setCursor(cursor);
+    if (cursor) {
+      requestAnimationFrame(() => this.setCursor(cursor));
+    }
 
     this.pushHistory();
   }

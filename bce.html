@@ -28,7 +28,10 @@
         border-radius: 3px;
         color: #ce9178;
     }
-    #editor { height: 500px; }
+    #editor { 
+        /* Убираем фиксированную высоту, чтобы редактор рос автоматически */
+        min-height: 200px; 
+    }
     .controls {
         margin-top: 16px;
         display: flex;
@@ -43,8 +46,12 @@
         border-radius: 4px;
         cursor: pointer;
         font-size: 13px;
+        transition: background 0.2s;
     }
     button:hover { background: #1177bb; }
+    button.secondary { background: #3c3c3c; }
+    button.secondary:hover { background: #4c4c4c; }
+    
     #output {
         margin-top: 16px;
         background: #1e1e1e;
@@ -54,8 +61,9 @@
         font-family: Consolas, monospace;
         font-size: 13px;
         white-space: pre-wrap;
-        max-height: 300px;
+        max-height: 400px;
         overflow: auto;
+        color: #9cdcfe;
     }
 </style>
 </head>
@@ -76,16 +84,18 @@
 <div id="editor"></div>
 
 <div class="controls">
-    <button onclick="showText()">Показать текст</button>
-    <button onclick="editor.undo()">Отменить</button>
-    <button onclick="editor.redo()">Вернуть</button>
-    <button onclick="loadSample()">Загрузить пример</button>
+    <button onclick="showText()">Показать весь текст</button>
+    <button onclick="loadLines()">Строки</button> <!-- НОВАЯ КНОПКА -->
+    <button class="secondary" onclick="editor.undo()">Отменить</button>
+    <button class="secondary" onclick="editor.redo()">Вернуть</button>
+    <button class="secondary" onclick="loadSample()">Загрузить пример</button>
 </div>
 
-<pre id="output"></pre>
+<pre id="output">Здесь появится результат...</pre>
 
 <script src="bce.js"></script>
 <script>
+    // Инициализация редактора
     const editor = new Bce('#editor', {
         initialText: `<h1>Привет, Bce!</h1>
 <p>Это упрощённый редактор кода.</p>
@@ -96,8 +106,17 @@
 </ul>`
     });
 
+    // Показать весь текст одной строкой с \n
     function showText() {
         document.getElementById('output').textContent = editor.getText();
+    }
+
+    // === НОВАЯ ФУНКЦИЯ: Вывод массива строк с ID ===
+    function loadLines() {
+        const lines = editor.getLines();
+        // Форматируем в красивый JSON с отступами в 2 пробела
+        const formatted = JSON.stringify(lines, null, 2);
+        document.getElementById('output').textContent = formatted;
     }
 
     function loadSample() {
@@ -108,6 +127,7 @@
     console.log("Hello!");
 }</code></pre>
 </div>`);
+        loadLines();
     }
 </script>
 
