@@ -656,7 +656,7 @@ class Bce {
       return;
     }
 
-    // === УМНАЯ ОБРАБОТКА BACKSPACE И DELETE ДЛЯ ВЫДЕЛЕННЫХ СТРОК ===
+    // === СТАНДАРТНАЯ ОБРАБОТКА BACKSPACE И DELETE ===
     if (e.key === "Backspace" || e.key === "Delete") {
       const cursor = this.getCursor();
       if (cursor) {
@@ -664,73 +664,19 @@ class Bce {
           cursor.startLine !== cursor.endLine ||
           cursor.startOffset !== cursor.endOffset;
 
+        // Если есть выделение, просто удаляем его стандартным способом
         if (isSelection) {
-          // Проверяем, начинается ли выделение ровно с начала строки (offset === 0)
-          if (cursor.startOffset === 0) {
-            const isEndAtLineStart = cursor.endOffset === 0;
-            const isEndAtLineEnd =
-              cursor.endOffset === this.lines[cursor.endLine].text.length;
-
-            // Применяем специальную логику только если выделены целые строки
-            if (
-              isEndAtLineStart ||
-              isEndAtLineEnd ||
-              cursor.startLine === cursor.endLine
-            ) {
-              e.preventDefault();
-              this.ignoreNextInput = true;
-
-              if (cursor.startLine === cursor.endLine) {
-                // Случай 1: Выделена одна целая строка
-                if (this.lines.length > 1) {
-                  this.lines.splice(cursor.startLine, 1);
-                } else {
-                  this.lines[0].text = "";
-                  this.lines[0].id = this.newId();
-                }
-              } else if (isEndAtLineStart) {
-                // Случай 2: Выделение пошло ВВЕРХ (Shift+Up).
-                // startLine - это верхняя строка, endLine - это строка с курсором.
-                // Удаляем от startLine до endLine - 1.
-                const count = cursor.endLine - cursor.startLine;
-                this.lines.splice(cursor.startLine, count);
-              } else {
-                // Случай 3: Выделение пошло ВНИЗ (Shift+Down).
-                // startLine - это строка с курсором, endLine - нижняя строка.
-                // Удаляем от startLine + 1 до endLine.
-                const count = cursor.endLine - cursor.startLine;
-                this.lines.splice(cursor.startLine + 1, count);
-              }
-
-              this.render();
-
-              // После удаления нужная нам строка (та, где был курсор)
-              // всегда оказывается по индексу cursor.startLine
-              const targetLine = Math.min(
-                cursor.startLine,
-                this.lines.length - 1,
-              );
-              this.setCursor({
-                startLine: targetLine,
-                startOffset: 0,
-                endLine: targetLine,
-                endOffset: 0,
-              });
-              this.pushHistory();
-              return;
-            }
-          }
-
-          // Если условия "целой строки" не выполнены, используем стандартное удаление
+          e.preventDefault();
+          this.ignoreNextInput = true;
           this.deleteSelection(cursor);
           this.pushHistory();
           return;
         }
 
-        // === ОБРАБОТКА ОДИНОЧНОГО КУРСОРА (без выделения) ===
         const currentLineIdx = cursor.startLine;
         const currentLine = this.lines[currentLineIdx];
 
+        // Если строка абсолютно пустая и это не единственная строка, удаляем именно её
         if (currentLine.text === "" && this.lines.length > 1) {
           e.preventDefault();
           this.ignoreNextInput = true;
@@ -754,10 +700,12 @@ class Bce {
           return;
         }
 
+        // Стандартное поведение для НЕпустых строк (объединение с соседней)
         if (e.key === "Backspace") {
           if (cursor.startOffset === 0 && cursor.startLine > 0) {
             e.preventDefault();
             this.ignoreNextInput = true;
+
             const prevLine = this.lines[cursor.startLine - 1];
             const currLine = this.lines[cursor.startLine];
             const prevLen = prevLine.text.length;
@@ -782,6 +730,7 @@ class Bce {
           ) {
             e.preventDefault();
             this.ignoreNextInput = true;
+
             const currLine = this.lines[cursor.startLine];
             const nextLine = this.lines[cursor.startLine + 1];
             const currLen = currLine.text.length;
