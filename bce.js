@@ -25,9 +25,6 @@ class Bce {
     this.maxHistory = 200;
     this.ignoreNextInput = false;
 
-    // УДАЛЕНО: { code: 'KeyV', ctrl: true, shift: false, action: 'paste' }
-    // Мы больше не перехватываем Ctrl+V в keydown, чтобы избежать запроса разрешений.
-    // Вставка будет обрабатываться нативным событием 'paste', которое безопасно.
     this.keyBindings = [
       { code: "KeyC", ctrl: true, shift: false, action: "copy" },
       { code: "KeyZ", ctrl: true, shift: false, action: "undo" },
@@ -100,7 +97,7 @@ class Bce {
   bindEvents() {
     this.content.addEventListener("keydown", (e) => this.onKeyDown(e));
     this.content.addEventListener("input", (e) => this.onInput(e));
-    this.content.addEventListener("paste", (e) => this.onPaste(e)); // Это событие обрабатывает вставку безопасно
+    this.content.addEventListener("paste", (e) => this.onPaste(e));
 
     this.content.addEventListener("beforeinput", (e) => {
       if (e.inputType === "historyUndo") {
@@ -128,6 +125,11 @@ class Bce {
   }
 
   render() {
+    // === ГАРАНТИЯ: в редакторе всегда есть хотя бы одна строка ===
+    if (this.lines.length === 0) {
+      this.lines.push({ id: this.newId(), text: "" });
+    }
+
     const cursor = this.getCursor();
 
     this.content.innerHTML = "";
@@ -456,6 +458,12 @@ class Bce {
         cursor.endLine - cursor.startLine,
       );
     }
+
+    // === ГАРАНТИЯ: если удаление стерло всё, создаем новую пустую строку с новым ID ===
+    if (this.lines.length === 0) {
+      this.lines.push({ id: this.newId(), text: "" });
+    }
+
     this.render();
     this.setCursor({
       startLine: cursor.startLine,
@@ -828,6 +836,11 @@ class Bce {
       }
     });
 
+    // === ГАРАНТИЯ: если браузер стер всё (массив пуст), создаем новую строку с новым ID ===
+    if (newLines.length === 0) {
+      newLines.push({ id: this.newId(), text: "" });
+    }
+
     this.lines = newLines;
 
     const cursor = this.getCursor();
@@ -839,18 +852,10 @@ class Bce {
     this.pushHistory();
   }
 
-  // === БЕЗОПАСНАЯ ВСТАВКА БЕЗ ЗАПРОСА РАЗРЕШЕНИЙ ===
   onPaste(e) {
-    e.preventDefault(); // Отменяем стандартную вставку браузера
-
-    // Получаем текст напрямую из события paste. Это НЕ требует разрешений браузера.
+    e.preventDefault();
     const text = (e.clipboardData || window.clipboardData).getData("text");
-
-    if (text) {
-      // Используем наш кастомный метод, который корректно разобьет текст на строки,
-      // создаст новые ID и добавит запись в историю
-      this.insertText(text.replace(/\r\n?/g, "\n"));
-    }
+    if (text) this.insertText(text.replace(/\r\n?/g, "\n"));
   }
 }
 
