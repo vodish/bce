@@ -2,139 +2,175 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Bce — демонстрация редактора</title>
+<!-- Оптимизированный viewport: запрещает зум, но учитывает безопасные зоны (чёлки, home bar) -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#121212">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Bce — Мобильный редактор</title>
 <link rel="stylesheet" href="bce.css">
 <style>
+    /* Базовые сбросы и учёт безопасных зон (notch, home indicator) */
     body {
-        font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         background: #121212;
         color: #eee;
         margin: 0;
-        padding: 20px;
+        padding: 16px;
+        padding-top: max(16px, env(safe-area-inset-top));
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+        -webkit-tap-highlight-color: transparent; /* Убирает синюю подсветку при тапе на Android/iOS */
     }
-    h1 { color: #4ec9b0; margin-top: 0; }
+
+    h1 { 
+        color: #4ec9b0; 
+        margin-top: 0; 
+        font-size: 1.4rem; 
+        margin-bottom: 12px;
+    }
+
     .info {
         background: #252526;
         padding: 12px 16px;
         border-left: 3px solid #4ec9b0;
-        margin-bottom: 20px;
-        border-radius: 4px;
-        font-size: 14px;
-        line-height: 1.6;
+        margin-bottom: 16px;
+        border-radius: 6px;
+        font-size: 13px;
+        line-height: 1.5;
     }
+
     .info code {
         background: #1e1e1e;
         padding: 2px 6px;
-        border-radius: 3px;
+        border-radius: 4px;
         color: #ce9178;
+        font-family: monospace;
     }
+
     #editor { 
-        min-height: 200px; 
+        min-height: 250px; 
         border-bottom-left-radius: 0;
         border-bottom-right-radius: 0;
+        /* КРИТИЧЕСКИ ВАЖНО: 16px предотвращает авто-зум на iOS при фокусе */
+        font-size: 16px; 
     }
     
-    /* === СТИЛИ ДЛЯ МОНИТОРА КУРСОРА (СТРОКА СОСТОЯНИЯ) === */
     .status-bar {
         background: #007acc;
         color: white;
-        padding: 6px 16px;
+        padding: 10px 16px;
         font-family: 'Consolas', 'Courier New', monospace;
-        font-size: 13px;
-        border-bottom-left-radius: 4px;
-        border-bottom-right-radius: 4px;
-        margin-top: -1px; /* Чтобы состыковаться с рамкой редактора */
+        font-size: 12px;
+        border-bottom-left-radius: 6px;
+        border-bottom-right-radius: 6px;
+        margin-top: -1px;
         display: flex;
         justify-content: space-between;
         align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
     }
-    .status-bar span {
-        opacity: 0.9;
-    }
+
     .status-bar .highlight {
         font-weight: bold;
-        opacity: 1;
         background: rgba(255, 255, 255, 0.2);
         padding: 2px 6px;
         border-radius: 3px;
     }
 
+    /* Сетка для кнопок: на мобильных удобнее 2 колонки */
     .controls {
-        margin-top: 16px;
-        display: flex;
-        gap: 8px;
-        flex-wrap: wrap;
-        align-items: center;
+        margin-top: 20px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
     }
+
     button {
         background: #0e639c;
         color: white;
         border: none;
-        padding: 8px 14px;
-        border-radius: 4px;
+        border-radius: 6px;
         cursor: pointer;
-        font-size: 13px;
-        transition: background 0.2s;
-    }
-    button:hover { background: #1177bb; }
-    button.secondary { background: #3c3c3c; }
-    button.secondary:hover { background: #4c4c4c; }
-    
-    .checkbox-label {
+        font-size: 14px;
+        font-weight: 500;
+        /* Минимальная высота 44px — стандарт для удобного нажатия пальцем */
+        min-height: 44px; 
         display: flex;
         align-items: center;
-        gap: 6px;
-        font-size: 13px;
-        cursor: pointer;
-        margin-left: auto;
-        user-select: none;
+        justify-content: center;
+        transition: transform 0.1s, background 0.2s;
     }
-    .checkbox-label input {
+
+    button:active { 
+        transform: scale(0.96); 
+        background: #1177bb;
+    }
+
+    button.secondary { 
+        background: #3c3c3c; 
+    }
+    button.secondary:active { 
+        background: #4c4c4c; 
+    }
+    
+    /* Чекбокс растягиваем на всю ширину сетки */
+    .checkbox-label {
+        grid-column: 1 / -1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        font-size: 14px;
         cursor: pointer;
+        user-select: none;
+        padding: 12px;
+        background: #252526;
+        border-radius: 6px;
+        margin-top: 4px;
+    }
+
+    .checkbox-label input { 
+        transform: scale(1.4); 
+        accent-color: #4ec9b0;
     }
     
     #output {
-        margin-top: 16px;
+        margin-top: 20px;
         background: #1e1e1e;
         border: 1px solid #3c3c3c;
         padding: 12px;
-        border-radius: 4px;
+        border-radius: 6px;
         font-family: Consolas, monospace;
-        font-size: 13px;
+        font-size: 12px;
         white-space: pre-wrap;
-        max-height: 400px;
+        max-height: 40vh; /* Ограничиваем высоту, чтобы не занимать весь экран */
         overflow: auto;
         color: #9cdcfe;
+        -webkit-overflow-scrolling: touch; /* Плавный скролл на iOS */
     }
 </style>
 </head>
 <body>
 
-<h1>📝 Редактор Bce</h1>
+<h1>📝 Bce Editor</h1>
 
 <div class="info">
-    <b>Горячие клавиши:</b><br>
-    <code>Ctrl+C</code> / <code>Ctrl+V</code> — копировать / вставить<br>
-    <code>Ctrl+Z</code> / <code>Ctrl+Shift+Z</code> — отменить / вернуть<br>
-    <code>Alt+↑/↓</code> — переместить строку<br>
-    <code>Alt+Shift+↑/↓</code> — дублировать строку<br>
-    <code>Tab</code> — отступ (кратный 4) / отступ выделенных строк<br>
-    <b>Emmet:</b> введите <code>a</code>, <code>aa</code>, <code>pre</code>, <code>code</code>, <code>h1</code>, <code>h2</code>, <code>h3</code> и нажмите <code>Tab</code> или <code>%</code>
+    <b>Emmet:</b> введите <code>div</code>, <code>a</code>, <code>h1</code> и нажмите <b>Tab</b> (ПК) или <b>\</b> (мобильный).
 </div>
 
 <div id="editor"></div>
-<!-- === МОНИТОР КУРСОРА === -->
+
 <div id="cursor-monitor" class="status-bar">
-    <span>Строка: <span class="highlight" id="mon-line">1</span>, Столбец: <span class="highlight" id="mon-col">1</span></span>
-    <span id="mon-selection">Выделение: нет</span>
+    <span>Стр: <span class="highlight" id="mon-line">1</span> | Симв: <span class="highlight" id="mon-col">1</span></span>
+    <span id="mon-selection" style="font-size: 11px;">Выделение: нет</span>
 </div>
 
 <div class="controls">
-    <button onclick="showText()">Показать весь текст</button>
-    <button onclick="loadLines()">Строки (JSON)</button>
-    <button class="secondary" onclick="editor.undo()">Отменить</button>
-    <button class="secondary" onclick="editor.redo()">Вернуть</button>
-    <button class="secondary" onclick="loadSample()">Загрузить пример</button>
+    <button onclick="loadLines()">📋 Строки (JSON)</button>
+    <button class="secondary" onclick="editor.undo()">↩ Отменить</button>
+    <button class="secondary" onclick="editor.redo()">↪ Вернуть</button>
+    <button class="secondary" onclick="loadSample()">🔄 Пример</button>
     
     <label class="checkbox-label">
         <input type="checkbox" id="toggleLines" onchange="toggleLineNumbers(this.checked)">
@@ -147,16 +183,15 @@
 <script src="bce.js"></script>
 <script>
     const editor = new Bce('#editor', {
-        initialText: `<h1>Привет, Bce!</h1>
-<p>Это упрощённый редактор кода.</p>
+        initialText: `<h1>Привет с телефона!</h1>
+<p>Это мобильный Bce.</p>
 <ul>
-    <li>Попробуйте нажать Enter — отступ сохранится</li>
-    <li>Введите <code>h2</code> и нажмите Tab</li>
+    <li>Введите h2 и нажмите \</li>
+    <li>Клавиатура не будет зумить экран</li>
 </ul>`,
         showLineNumbers: false
     });
 
-    // === ФУНКЦИЯ ОБНОВЛЕНИЯ МОНИТОРА КУРСОРА ===
     function updateCursorMonitor() {
         const cursor = editor.getCursor();
         const monLine = document.getElementById('mon-line');
@@ -170,40 +205,29 @@
             return;
         }
 
-        // Отображаем 1-based индексы для удобства пользователя
         monLine.textContent = cursor.startLine + 1;
         monCol.textContent = cursor.startOffset + 1;
 
         const isSelection = cursor.startLine !== cursor.endLine || cursor.startOffset !== cursor.endOffset;
-        
         if (isSelection) {
-            const startStr = `Стр ${cursor.startLine + 1}, Симв ${cursor.startOffset}`;
-            const endStr = `Стр ${cursor.endLine + 1}, Симв ${cursor.endOffset}`;
-            monSel.textContent = `Выделение: от [${startStr}] до [${endStr}]`;
-            monSel.style.color = '#ffd700'; // Желтый цвет при выделении
+            monSel.textContent = `Выделение до: Стр ${cursor.endLine + 1}, Симв ${cursor.endOffset}`;
+            monSel.style.color = '#ffd700';
         } else {
             monSel.textContent = 'Выделение: нет';
-            monSel.style.color = 'white';
+            monSel.style.color = 'rgba(255,255,255,0.7)';
         }
     }
 
-    // Подписываемся на события редактора для обновления монитора
     editor.content.addEventListener('keyup', updateCursorMonitor);
     editor.content.addEventListener('mouseup', updateCursorMonitor);
     editor.content.addEventListener('click', updateCursorMonitor);
     editor.content.addEventListener('input', updateCursorMonitor);
-    
-    // Инициализируем монитор при загрузке
     updateCursorMonitor();
 
-    function showText() {
-        document.getElementById('output').textContent = editor.getText();
-    }
-
     function loadLines() {
-        const lines = editor.getLines();
-        const formatted = JSON.stringify(lines, null, 2);
-        document.getElementById('output').textContent = formatted;
+        document.getElementById('output').textContent = JSON.stringify(editor.getLines(), null, 2);
+        // Прокрутка к результату на мобильных
+        document.getElementById('output').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
 
     function toggleLineNumbers(show) {
@@ -213,7 +237,7 @@
     function loadSample() {
         editor.setText(`<div class="container">
     <h1>Заголовок</h1>
-    <p>Абзац текста с <a href="#">ссылкой</a>.</p>
+    <p>Текст с <a href="#">ссылкой</a>.</p>
     <pre><code>function hello() {
     console.log("Hello!");
 }</code></pre>

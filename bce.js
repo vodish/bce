@@ -44,7 +44,9 @@ class Bce {
       h2: "<h2>|</h2>",
       h3: "<h3>|</h3>",
     };
-    this.emmetTriggers = ["Tab", "%"];
+
+    // === ИЗМЕНЕНИЕ: Триггеры теперь Tab и \ (обратный слеш) ===
+    this.emmetTriggers = ["Tab", "\\"];
 
     this.build();
     this.bindEvents();
@@ -78,6 +80,7 @@ class Bce {
     this.content.setAttribute("spellcheck", "false");
     this.content.setAttribute("autocorrect", "off");
     this.content.setAttribute("autocapitalize", "off");
+    this.content.setAttribute("enterkeyhint", "enter");
 
     this.wrapper.appendChild(this.gutter);
     this.wrapper.appendChild(this.content);
@@ -656,37 +659,21 @@ class Bce {
       return;
     }
 
-    // === ИСПРАВЛЕНИЕ: Принудительное управление выделением через Shift + Стрелки ===
-    // Это предотвращает "магическое" выделение до конца строки браузером
-    if (e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
-      if (e.key === "ArrowDown" || e.key === "Down") {
+    // === ИЗМЕНЕНИЕ: Проверка на Tab или \ (обратный слеш) ===
+    const isTab = e.key === "Tab" || e.key === "tab" || e.keyCode === 9;
+    const isBackslash = e.key === "\\" || e.keyCode === 220;
+    const isEmmetTrigger = isTab || isBackslash;
+
+    if (isEmmetTrigger) {
+      if (this.tryEmmet()) {
         e.preventDefault();
-        const cursor = this.getCursor();
-        if (cursor) {
-          const nextLine = Math.min(cursor.endLine + 1, this.lines.length - 1);
-          this.setCursor({
-            startLine: cursor.startLine,
-            startOffset: cursor.startOffset,
-            endLine: nextLine,
-            endOffset: 0, // Строго в начало следующей строки
-          });
-          this.updateActiveLine();
-        }
         return;
       }
-      if (e.key === "ArrowUp" || e.key === "Up") {
+      // Если это Tab и Emmet не сработал, выполняем стандартный Tab
+      if (isTab) {
         e.preventDefault();
-        const cursor = this.getCursor();
-        if (cursor) {
-          const prevLine = Math.max(cursor.endLine - 1, 0);
-          this.setCursor({
-            startLine: cursor.startLine,
-            startOffset: cursor.startOffset,
-            endLine: prevLine,
-            endOffset: 0, // Строго в начало предыдущей строки
-          });
-          this.updateActiveLine();
-        }
+        this.ignoreNextInput = true;
+        this.handleTab(e.shiftKey);
         return;
       }
     }
@@ -829,15 +816,35 @@ class Bce {
       }
     }
 
-    if (this.emmetTriggers.includes(e.key)) {
-      if (this.tryEmmet()) {
+    if (e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      if (e.key === "ArrowDown" || e.key === "Down" || e.keyCode === 40) {
         e.preventDefault();
+        const cursor = this.getCursor();
+        if (cursor) {
+          const nextLine = Math.min(cursor.endLine + 1, this.lines.length - 1);
+          this.setCursor({
+            startLine: cursor.startLine,
+            startOffset: cursor.startOffset,
+            endLine: nextLine,
+            endOffset: 0,
+          });
+          this.updateActiveLine();
+        }
         return;
       }
-      if (e.key === "Tab" || e.key === "tab") {
+      if (e.key === "ArrowUp" || e.key === "Up" || e.keyCode === 38) {
         e.preventDefault();
-        this.ignoreNextInput = true;
-        this.handleTab(e.shiftKey);
+        const cursor = this.getCursor();
+        if (cursor) {
+          const prevLine = Math.max(cursor.endLine - 1, 0);
+          this.setCursor({
+            startLine: cursor.startLine,
+            startOffset: cursor.startOffset,
+            endLine: prevLine,
+            endOffset: 0,
+          });
+          this.updateActiveLine();
+        }
         return;
       }
     }
