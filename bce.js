@@ -656,7 +656,7 @@ class Bce {
       return;
     }
 
-    // === ОБРАБОТКА BACKSPACE И DELETE ===
+    // === УМНАЯ ОБРАБОТКА BACKSPACE И DELETE ДЛЯ ВЫДЕЛЕННЫХ СТРОК ===
     if (e.key === "Backspace" || e.key === "Delete") {
       const cursor = this.getCursor();
       if (cursor) {
@@ -664,38 +664,83 @@ class Bce {
           cursor.startLine !== cursor.endLine ||
           cursor.startOffset !== cursor.endOffset;
 
-        // 1. Если есть выделение, просто удаляем его
         if (isSelection) {
-          e.preventDefault();
-          this.ignoreNextInput = true;
+          // Проверяем, начинается ли выделение ровно с начала строки (offset === 0)
+          if (cursor.startOffset === 0) {
+            const isEndAtLineStart = cursor.endOffset === 0;
+            const isEndAtLineEnd =
+              cursor.endOffset === this.lines[cursor.endLine].text.length;
+
+            // Применяем специальную логику только если выделены целые строки
+            if (
+              isEndAtLineStart ||
+              isEndAtLineEnd ||
+              cursor.startLine === cursor.endLine
+            ) {
+              e.preventDefault();
+              this.ignoreNextInput = true;
+
+              if (cursor.startLine === cursor.endLine) {
+                // Случай 1: Выделена одна целая строка
+                if (this.lines.length > 1) {
+                  this.lines.splice(cursor.startLine, 1);
+                } else {
+                  this.lines[0].text = "";
+                  this.lines[0].id = this.newId();
+                }
+              } else if (isEndAtLineStart) {
+                // Случай 2: Выделение пошло ВВЕРХ (Shift+Up).
+                // startLine - это верхняя строка, endLine - это строка с курсором.
+                // Удаляем от startLine до endLine - 1.
+                const count = cursor.endLine - cursor.startLine;
+                this.lines.splice(cursor.startLine, count);
+              } else {
+                // Случай 3: Выделение пошло ВНИЗ (Shift+Down).
+                // startLine - это строка с курсором, endLine - нижняя строка.
+                // Удаляем от startLine + 1 до endLine.
+                const count = cursor.endLine - cursor.startLine;
+                this.lines.splice(cursor.startLine + 1, count);
+              }
+
+              this.render();
+
+              // После удаления нужная нам строка (та, где был курсор)
+              // всегда оказывается по индексу cursor.startLine
+              const targetLine = Math.min(
+                cursor.startLine,
+                this.lines.length - 1,
+              );
+              this.setCursor({
+                startLine: targetLine,
+                startOffset: 0,
+                endLine: targetLine,
+                endOffset: 0,
+              });
+              this.pushHistory();
+              return;
+            }
+          }
+
+          // Если условия "целой строки" не выполнены, используем стандартное удаление
           this.deleteSelection(cursor);
           this.pushHistory();
           return;
         }
 
+        // === ОБРАБОТКА ОДИНОЧНОГО КУРСОРА (без выделения) ===
         const currentLineIdx = cursor.startLine;
         const currentLine = this.lines[currentLineIdx];
 
-        // 2. НОВОЕ ПРАВИЛО: Если строка абсолютно пустая и это не единственная строка, удаляем именно её
         if (currentLine.text === "" && this.lines.length > 1) {
           e.preventDefault();
           this.ignoreNextInput = true;
-
-          // Удаляем пустую строку из массива (её ID исчезает)
           this.lines.splice(currentLineIdx, 1);
 
-          // Определяем новую позицию курсора
           let newLineIdx = currentLineIdx;
           let newOffset = 0;
-
           if (currentLineIdx > 0) {
-            // Если есть предыдущая строка, переносим курсор в её конец
             newLineIdx = currentLineIdx - 1;
             newOffset = this.lines[newLineIdx].text.length;
-          } else {
-            // Если это была первая строка, курсор остаётся в начале новой первой строки
-            newLineIdx = 0;
-            newOffset = 0;
           }
 
           this.render();
@@ -709,18 +754,16 @@ class Bce {
           return;
         }
 
-        // 3. Стандартное поведение для НЕпустых строк (объединение с соседней)
         if (e.key === "Backspace") {
           if (cursor.startOffset === 0 && cursor.startLine > 0) {
             e.preventDefault();
             this.ignoreNextInput = true;
-
             const prevLine = this.lines[cursor.startLine - 1];
             const currLine = this.lines[cursor.startLine];
             const prevLen = prevLine.text.length;
 
-            prevLine.text += currLine.text; // Предыдущая строка сохраняет свой ID
-            this.lines.splice(cursor.startLine, 1); // Текущая удаляется
+            prevLine.text += currLine.text;
+            this.lines.splice(cursor.startLine, 1);
 
             this.render();
             this.setCursor({
@@ -739,13 +782,12 @@ class Bce {
           ) {
             e.preventDefault();
             this.ignoreNextInput = true;
-
             const currLine = this.lines[cursor.startLine];
             const nextLine = this.lines[cursor.startLine + 1];
             const currLen = currLine.text.length;
 
-            currLine.text += nextLine.text; // Текущая строка сохраняет свой ID
-            this.lines.splice(cursor.startLine + 1, 1); // Следующая удаляется
+            currLine.text += nextLine.text;
+            this.lines.splice(cursor.startLine + 1, 1);
 
             this.render();
             this.setCursor({
@@ -822,25 +864,16 @@ class Bce {
 
       if (shift) {
         const beforeCursor = line.text.substring(0, cursor.startOffset);
-
-        if (!/^ *$/.test(beforeCursor)) {
-          return;
-        }
+        if (!/^ *$/.test(beforeCursor)) return;
 
         const spacesToRemove = Math.min(
           beforeCursor.length,
           this.options.tabSize,
         );
-
         if (spacesToRemove > 0) {
-          const newBeforeCursor = beforeCursor.substring(
-            0,
-            beforeCursor.length - spacesToRemove,
-          );
-          const afterCursor = line.text.substring(cursor.startOffset);
-
-          line.text = newBeforeCursor + afterCursor;
-
+          line.text =
+            beforeCursor.substring(0, beforeCursor.length - spacesToRemove) +
+            line.text.substring(cursor.startOffset);
           this.render();
           this.setCursor({
             startLine: cursor.startLine,
@@ -876,7 +909,6 @@ class Bce {
 
   handleEnter() {
     let cursor = this.getCursor();
-
     if (!cursor || cursor.startLine >= this.lines.length) {
       const lastIdx = Math.max(0, this.lines.length - 1);
       cursor = {
@@ -902,19 +934,15 @@ class Bce {
 
     line.text = before;
     const newLine = { id: this.newId(), text: indent + after };
-
     this.lines.splice(cursor.startLine + 1, 0, newLine);
 
     this.render();
-
-    const newOffset = indent.length;
     this.setCursor({
       startLine: cursor.startLine + 1,
-      startOffset: newOffset,
+      startOffset: indent.length,
       endLine: cursor.startLine + 1,
-      endOffset: newOffset,
+      endOffset: indent.length,
     });
-
     this.pushHistory();
   }
 
@@ -929,10 +957,7 @@ class Bce {
 
     if (lineEls.length === this.lines.length) {
       lineEls.forEach((el, idx) => {
-        newLines.push({
-          id: this.lines[idx].id,
-          text: el.textContent || "",
-        });
+        newLines.push({ id: this.lines[idx].id, text: el.textContent || "" });
       });
     } else {
       const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
@@ -952,13 +977,9 @@ class Bce {
     }
 
     this.lines = newLines;
-
     const cursor = this.getCursor();
     this.render();
-    if (cursor) {
-      requestAnimationFrame(() => this.setCursor(cursor));
-    }
-
+    if (cursor) requestAnimationFrame(() => this.setCursor(cursor));
     this.pushHistory();
   }
 
