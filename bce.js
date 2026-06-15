@@ -125,7 +125,6 @@ class Bce {
   }
 
   render() {
-    // Страховка: если массив по какой-то причине абсолютно пуст, создаем строку
     if (this.lines.length === 0) {
       this.lines.push({ id: this.newId(), text: "" });
     }
@@ -459,9 +458,7 @@ class Bce {
       );
     }
 
-    // === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ===
-    // Если после удаления осталась только одна пустая строка, считаем это "полной очисткой"
-    // и принудительно выдаем ей новый ID, чтобы старый (например, id: 1) исчез.
+    // Если после удаления осталась только одна пустая строка, выдаем ей новый ID
     if (this.lines.length === 1 && this.lines[0].text === "") {
       this.lines[0].id = this.newId();
     }
@@ -660,6 +657,77 @@ class Bce {
       return;
     }
 
+    // === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Перехват Backspace и Delete ===
+    // Это предотвращает хаотичное объединение DOM-элементов браузером,
+    // которое приводило к потере или изменению ID строк.
+    if (e.key === "Backspace" || e.key === "Delete") {
+      const cursor = this.getCursor();
+      if (cursor) {
+        const isSelection =
+          cursor.startLine !== cursor.endLine ||
+          cursor.startOffset !== cursor.endOffset;
+
+        if (isSelection) {
+          e.preventDefault();
+          this.ignoreNextInput = true;
+          this.deleteSelection(cursor);
+          this.pushHistory();
+          return;
+        }
+
+        if (e.key === "Backspace") {
+          // Курсор в начале строки (не первой) -> объединяем с предыдущей строкой
+          if (cursor.startOffset === 0 && cursor.startLine > 0) {
+            e.preventDefault();
+            this.ignoreNextInput = true;
+
+            const prevLine = this.lines[cursor.startLine - 1];
+            const currLine = this.lines[cursor.startLine];
+            const prevLen = prevLine.text.length;
+
+            prevLine.text += currLine.text; // Предыдущая строка сохраняет свой ID
+            this.lines.splice(cursor.startLine, 1); // Текущая строка удаляется
+
+            this.render();
+            this.setCursor({
+              startLine: cursor.startLine - 1,
+              startOffset: prevLen,
+              endLine: cursor.startLine - 1,
+              endOffset: prevLen,
+            });
+            this.pushHistory();
+            return;
+          }
+        } else if (e.key === "Delete") {
+          // Курсор в конце строки (не последней) -> объединяем со следующей строкой
+          if (
+            cursor.startOffset === this.lines[cursor.startLine].text.length &&
+            cursor.startLine < this.lines.length - 1
+          ) {
+            e.preventDefault();
+            this.ignoreNextInput = true;
+
+            const currLine = this.lines[cursor.startLine];
+            const nextLine = this.lines[cursor.startLine + 1];
+            const currLen = currLine.text.length;
+
+            currLine.text += nextLine.text; // Текущая строка сохраняет свой ID
+            this.lines.splice(cursor.startLine + 1, 1); // Следующая строка удаляется
+
+            this.render();
+            this.setCursor({
+              startLine: cursor.startLine,
+              startOffset: currLen,
+              endLine: cursor.startLine,
+              endOffset: currLen,
+            });
+            this.pushHistory();
+            return;
+          }
+        }
+      }
+    }
+
     if (this.emmetTriggers.includes(e.key)) {
       if (this.tryEmmet()) {
         e.preventDefault();
@@ -825,22 +893,31 @@ class Bce {
 
     const lineEls = this.content.querySelectorAll(".bce-line");
     const newLines = [];
-    const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
 
-    lineEls.forEach((el) => {
-      const text = el.textContent || "";
-      const lineId = parseInt(el.dataset.lineId, 10);
+    // Если количество строк в DOM совпадает с нашим массивом, просто обновляем текст,
+    // жестко сохраняя оригинальные ID (это происходит при обычном вводе символов)
+    if (lineEls.length === this.lines.length) {
+      lineEls.forEach((el, idx) => {
+        newLines.push({
+          id: this.lines[idx].id,
+          text: el.textContent || "",
+        });
+      });
+    } else {
+      // Если количество не совпадает (браузер что-то сломал), пытаемся восстановить по data-line-id
+      const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
+      lineEls.forEach((el) => {
+        const text = el.textContent || "";
+        const lineId = parseInt(el.dataset.lineId, 10);
+        if (lineId && oldLinesMap.has(lineId)) {
+          newLines.push({ id: lineId, text });
+        } else {
+          newLines.push({ id: this.newId(), text });
+        }
+      });
+    }
 
-      if (lineId && oldLinesMap.has(lineId)) {
-        newLines.push({ id: lineId, text });
-      } else {
-        newLines.push({ id: this.newId(), text });
-      }
-    });
-
-    // === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ===
-    // Если после ввода/удаления в редакторе осталась только одна пустая строка,
-    // мы считаем это "полной очисткой" и принудительно выдаем ей новый ID.
+    // Если после всего осталась одна пустая строка, даем ей новый ID (полная очистка)
     if (newLines.length === 1 && newLines[0].text === "") {
       newLines[0].id = this.newId();
     }
@@ -859,7 +936,10 @@ class Bce {
   onPaste(e) {
     e.preventDefault();
     const text = (e.clipboardData || window.clipboardData).getData("text");
-    if (text) this.insertText(text.replace(/\r\n?/g, "\n"));
+    if (text) {
+      this.ignoreNextInput = true; // Предотвращаем конфликт с onInput после вставки
+      this.insertText(text.replace(/\r\n?/g, "\n"));
+    }
   }
 }
 
