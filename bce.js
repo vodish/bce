@@ -656,7 +656,41 @@ class Bce {
       return;
     }
 
-    // === СТАНДАРТНАЯ ОБРАБОТКА BACKSPACE И DELETE ===
+    // === ИСПРАВЛЕНИЕ: Принудительное управление выделением через Shift + Стрелки ===
+    // Это предотвращает "магическое" выделение до конца строки браузером
+    if (e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+      if (e.key === "ArrowDown" || e.key === "Down") {
+        e.preventDefault();
+        const cursor = this.getCursor();
+        if (cursor) {
+          const nextLine = Math.min(cursor.endLine + 1, this.lines.length - 1);
+          this.setCursor({
+            startLine: cursor.startLine,
+            startOffset: cursor.startOffset,
+            endLine: nextLine,
+            endOffset: 0, // Строго в начало следующей строки
+          });
+          this.updateActiveLine();
+        }
+        return;
+      }
+      if (e.key === "ArrowUp" || e.key === "Up") {
+        e.preventDefault();
+        const cursor = this.getCursor();
+        if (cursor) {
+          const prevLine = Math.max(cursor.endLine - 1, 0);
+          this.setCursor({
+            startLine: cursor.startLine,
+            startOffset: cursor.startOffset,
+            endLine: prevLine,
+            endOffset: 0, // Строго в начало предыдущей строки
+          });
+          this.updateActiveLine();
+        }
+        return;
+      }
+    }
+
     if (e.key === "Backspace" || e.key === "Delete") {
       const cursor = this.getCursor();
       if (cursor) {
@@ -664,7 +698,58 @@ class Bce {
           cursor.startLine !== cursor.endLine ||
           cursor.startOffset !== cursor.endOffset;
 
-        // Если есть выделение, просто удаляем его стандартным способом
+        if (isSelection && cursor.startOffset === 0) {
+          if (
+            cursor.startLine === cursor.endLine &&
+            cursor.endOffset === this.lines[cursor.startLine].text.length
+          ) {
+            e.preventDefault();
+            this.ignoreNextInput = true;
+
+            if (this.lines.length === 1) {
+              this.lines[0] = { id: this.newId(), text: "" };
+            } else {
+              this.lines[cursor.startLine].text = "";
+            }
+
+            this.render();
+            this.setCursor({
+              startLine: cursor.startLine,
+              startOffset: 0,
+              endLine: cursor.startLine,
+              endOffset: 0,
+            });
+            this.pushHistory();
+            return;
+          }
+
+          if (cursor.endOffset === 0 && cursor.endLine > cursor.startLine) {
+            e.preventDefault();
+            this.ignoreNextInput = true;
+
+            const deleteCount = cursor.endLine - cursor.startLine;
+            if (this.lines.length - deleteCount === 0) {
+              this.lines = [{ id: this.newId(), text: "" }];
+            } else {
+              this.lines.splice(cursor.startLine, deleteCount);
+            }
+
+            this.render();
+            const targetLine = Math.min(
+              cursor.startLine,
+              this.lines.length - 1,
+            );
+            this.setCursor({
+              startLine: targetLine,
+              startOffset: 0,
+              endLine: targetLine,
+              endOffset: 0,
+            });
+            this.pushHistory();
+            return;
+          }
+        }
+
         if (isSelection) {
           e.preventDefault();
           this.ignoreNextInput = true;
@@ -676,7 +761,6 @@ class Bce {
         const currentLineIdx = cursor.startLine;
         const currentLine = this.lines[currentLineIdx];
 
-        // Если строка абсолютно пустая и это не единственная строка, удаляем именно её
         if (currentLine.text === "" && this.lines.length > 1) {
           e.preventDefault();
           this.ignoreNextInput = true;
@@ -700,19 +784,15 @@ class Bce {
           return;
         }
 
-        // Стандартное поведение для НЕпустых строк (объединение с соседней)
         if (e.key === "Backspace") {
           if (cursor.startOffset === 0 && cursor.startLine > 0) {
             e.preventDefault();
             this.ignoreNextInput = true;
-
             const prevLine = this.lines[cursor.startLine - 1];
             const currLine = this.lines[cursor.startLine];
             const prevLen = prevLine.text.length;
-
             prevLine.text += currLine.text;
             this.lines.splice(cursor.startLine, 1);
-
             this.render();
             this.setCursor({
               startLine: cursor.startLine - 1,
@@ -730,14 +810,11 @@ class Bce {
           ) {
             e.preventDefault();
             this.ignoreNextInput = true;
-
             const currLine = this.lines[cursor.startLine];
             const nextLine = this.lines[cursor.startLine + 1];
             const currLen = currLine.text.length;
-
             currLine.text += nextLine.text;
             this.lines.splice(cursor.startLine + 1, 1);
-
             this.render();
             this.setCursor({
               startLine: cursor.startLine,
@@ -810,11 +887,9 @@ class Bce {
       this.pushHistory();
     } else {
       const line = this.lines[cursor.startLine];
-
       if (shift) {
         const beforeCursor = line.text.substring(0, cursor.startOffset);
         if (!/^ *$/.test(beforeCursor)) return;
-
         const spacesToRemove = Math.min(
           beforeCursor.length,
           this.options.tabSize,
@@ -839,7 +914,6 @@ class Bce {
           Math.ceil((currentLen + 1) / this.options.tabSize) *
           this.options.tabSize;
         const add = " ".repeat(target - currentLen);
-
         line.text =
           line.text.substring(0, cursor.startOffset) +
           add +

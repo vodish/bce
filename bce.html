@@ -30,7 +30,35 @@
     }
     #editor { 
         min-height: 200px; 
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
     }
+    
+    /* === СТИЛИ ДЛЯ МОНИТОРА КУРСОРА (СТРОКА СОСТОЯНИЯ) === */
+    .status-bar {
+        background: #007acc;
+        color: white;
+        padding: 6px 16px;
+        font-family: 'Consolas', 'Courier New', monospace;
+        font-size: 13px;
+        border-bottom-left-radius: 4px;
+        border-bottom-right-radius: 4px;
+        margin-top: -1px; /* Чтобы состыковаться с рамкой редактора */
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .status-bar span {
+        opacity: 0.9;
+    }
+    .status-bar .highlight {
+        font-weight: bold;
+        opacity: 1;
+        background: rgba(255, 255, 255, 0.2);
+        padding: 2px 6px;
+        border-radius: 3px;
+    }
+
     .controls {
         margin-top: 16px;
         display: flex;
@@ -58,7 +86,7 @@
         gap: 6px;
         font-size: 13px;
         cursor: pointer;
-        margin-left: auto; /* Сдвигает чекбокс вправо */
+        margin-left: auto;
         user-select: none;
     }
     .checkbox-label input {
@@ -95,6 +123,11 @@
 </div>
 
 <div id="editor"></div>
+<!-- === МОНИТОР КУРСОРА === -->
+<div id="cursor-monitor" class="status-bar">
+    <span>Строка: <span class="highlight" id="mon-line">1</span>, Столбец: <span class="highlight" id="mon-col">1</span></span>
+    <span id="mon-selection">Выделение: нет</span>
+</div>
 
 <div class="controls">
     <button onclick="showText()">Показать весь текст</button>
@@ -103,7 +136,6 @@
     <button class="secondary" onclick="editor.redo()">Вернуть</button>
     <button class="secondary" onclick="loadSample()">Загрузить пример</button>
     
-    <!-- ЧЕКБОКС ДЛЯ УПРАВЛЕНИЯ НОМЕРАМИ СТРОК -->
     <label class="checkbox-label">
         <input type="checkbox" id="toggleLines" onchange="toggleLineNumbers(this.checked)">
         Показывать номера строк
@@ -114,7 +146,6 @@
 
 <script src="bce.js"></script>
 <script>
-    // Инициализация редактора (showLineNumbers по умолчанию false, но можно указать явно)
     const editor = new Bce('#editor', {
         initialText: `<h1>Привет, Bce!</h1>
 <p>Это упрощённый редактор кода.</p>
@@ -122,8 +153,48 @@
     <li>Попробуйте нажать Enter — отступ сохранится</li>
     <li>Введите <code>h2</code> и нажмите Tab</li>
 </ul>`,
-        showLineNumbers: false // Явно указываем, что по умолчанию скрыты
+        showLineNumbers: false
     });
+
+    // === ФУНКЦИЯ ОБНОВЛЕНИЯ МОНИТОРА КУРСОРА ===
+    function updateCursorMonitor() {
+        const cursor = editor.getCursor();
+        const monLine = document.getElementById('mon-line');
+        const monCol = document.getElementById('mon-col');
+        const monSel = document.getElementById('mon-selection');
+
+        if (!cursor) {
+            monLine.textContent = '-';
+            monCol.textContent = '-';
+            monSel.textContent = 'Курсор вне редактора';
+            return;
+        }
+
+        // Отображаем 1-based индексы для удобства пользователя
+        monLine.textContent = cursor.startLine + 1;
+        monCol.textContent = cursor.startOffset + 1;
+
+        const isSelection = cursor.startLine !== cursor.endLine || cursor.startOffset !== cursor.endOffset;
+        
+        if (isSelection) {
+            const startStr = `Стр ${cursor.startLine + 1}, Симв ${cursor.startOffset}`;
+            const endStr = `Стр ${cursor.endLine + 1}, Симв ${cursor.endOffset}`;
+            monSel.textContent = `Выделение: от [${startStr}] до [${endStr}]`;
+            monSel.style.color = '#ffd700'; // Желтый цвет при выделении
+        } else {
+            monSel.textContent = 'Выделение: нет';
+            monSel.style.color = 'white';
+        }
+    }
+
+    // Подписываемся на события редактора для обновления монитора
+    editor.content.addEventListener('keyup', updateCursorMonitor);
+    editor.content.addEventListener('mouseup', updateCursorMonitor);
+    editor.content.addEventListener('click', updateCursorMonitor);
+    editor.content.addEventListener('input', updateCursorMonitor);
+    
+    // Инициализируем монитор при загрузке
+    updateCursorMonitor();
 
     function showText() {
         document.getElementById('output').textContent = editor.getText();
