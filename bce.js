@@ -45,7 +45,9 @@ class Bce {
       h2: "<h2>|</h2>",
       h3: "<h3>|</h3>",
     };
-    this.emmetTriggers = ["Tab", "\\"];
+
+    // === ИЗМЕНЕНИЕ: Триггер заменен с '%' на '.' ===
+    this.emmetTriggers = ["Tab", "."];
 
     this.build();
     this.bindEvents();
@@ -207,7 +209,7 @@ class Bce {
             "</span>" +
             '<span class="bce-attr-eq">' +
             eq +
-            "</span>" + // <-- ИСПРАВЛЕНИЕ: оборачиваем знак = в span
+            "</span>" +
             '<span class="bce-attr-value">' +
             av +
             "</span>",
@@ -607,28 +609,19 @@ class Bce {
       return false;
 
     const line = this.lines[cursor.startLine];
-    let before = line.text.substring(0, cursor.startOffset);
+    const before = line.text.substring(0, cursor.startOffset);
 
-    let triggerLength = 0;
-    const lastChar = before.slice(-1);
+    const m = before.match(/([a-zA-Z0-9:]+)$/);
+    if (!m) return false;
 
-    if (lastChar === "\\") {
-      triggerLength = 1;
-      before = before.slice(0, -1);
-    }
-
-    const match = before.match(/([a-zA-Z0-9:]+)$/);
-    if (!match) return false;
-
-    const abbr = match[1];
+    const abbr = m[1].toLowerCase();
     if (!this.emmet[abbr]) return false;
 
     const expansion = this.emmet[abbr];
     const cursorPos = expansion.indexOf("|");
     const clean = expansion.replace("|", "");
 
-    const startReplace = cursor.startOffset - abbr.length - triggerLength;
-
+    const startReplace = cursor.startOffset - abbr.length;
     line.text =
       line.text.substring(0, startReplace) +
       clean +
@@ -674,21 +667,19 @@ class Bce {
       return;
     }
 
-    const isTab = e.key === "Tab" || e.key === "tab" || e.keyCode === 9;
-    const isBackslash = e.key === "\\" || e.keyCode === 220;
-
-    if (this.options.enableEmmet && (isTab || isBackslash)) {
+    // Проверка триггеров Emmet (теперь это Tab или .)
+    if (this.options.enableEmmet && this.emmetTriggers.includes(e.key)) {
       if (this.tryEmmet()) {
         e.preventDefault();
         return;
       }
-    }
-
-    if (isTab) {
-      e.preventDefault();
-      this.ignoreNextInput = true;
-      this.handleTab(e.shiftKey);
-      return;
+      // Если Emmet не сработал, но это Tab, делаем стандартный отступ
+      if (e.key === "Tab" || e.key === "tab") {
+        e.preventDefault();
+        this.ignoreNextInput = true;
+        this.handleTab(e.shiftKey);
+        return;
+      }
     }
 
     if (e.key === "Backspace" || e.key === "Delete") {
@@ -705,13 +696,11 @@ class Bce {
           ) {
             e.preventDefault();
             this.ignoreNextInput = true;
-
             if (this.lines.length === 1) {
               this.lines[0] = { id: this.newId(), text: "" };
             } else {
               this.lines[cursor.startLine].text = "";
             }
-
             this.render();
             this.setCursor({
               startLine: cursor.startLine,
@@ -726,14 +715,12 @@ class Bce {
           if (cursor.endOffset === 0 && cursor.endLine > cursor.startLine) {
             e.preventDefault();
             this.ignoreNextInput = true;
-
             const deleteCount = cursor.endLine - cursor.startLine;
             if (this.lines.length - deleteCount === 0) {
               this.lines = [{ id: this.newId(), text: "" }];
             } else {
               this.lines.splice(cursor.startLine, deleteCount);
             }
-
             this.render();
             const targetLine = Math.min(
               cursor.startLine,
@@ -765,14 +752,12 @@ class Bce {
           e.preventDefault();
           this.ignoreNextInput = true;
           this.lines.splice(currentLineIdx, 1);
-
           let newLineIdx = currentLineIdx;
           let newOffset = 0;
           if (currentLineIdx > 0) {
             newLineIdx = currentLineIdx - 1;
             newOffset = this.lines[newLineIdx].text.length;
           }
-
           this.render();
           this.setCursor({
             startLine: newLineIdx,
@@ -990,12 +975,6 @@ class Bce {
   }
 
   onInput(e) {
-    if (this.options.enableEmmet && e.data === "\\") {
-      if (this.tryEmmet()) {
-        return;
-      }
-    }
-
     if (this.ignoreNextInput) {
       this.ignoreNextInput = false;
       return;
