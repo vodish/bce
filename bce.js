@@ -14,7 +14,7 @@ class Bce {
         tabSize: 4,
         initialText: "",
         showLineNumbers: false,
-        enableEmmet: true, // === НОВАЯ НАСТРОЙКА: Emmet включен по умолчанию ===
+        enableEmmet: true,
       },
       options,
     );
@@ -96,7 +96,6 @@ class Bce {
     this.render();
   }
 
-  // === НОВЫЙ МЕТОД: Динамическое включение/отключение Emmet ===
   setEnableEmmet(enable) {
     this.options.enableEmmet = enable;
   }
@@ -206,7 +205,9 @@ class Bce {
             '<span class="bce-attr-name">' +
             an +
             "</span>" +
+            '<span class="bce-attr-eq">' +
             eq +
+            "</span>" + // <-- ИСПРАВЛЕНИЕ: оборачиваем знак = в span
             '<span class="bce-attr-value">' +
             av +
             "</span>",
@@ -606,19 +607,19 @@ class Bce {
       return false;
 
     const line = this.lines[cursor.startLine];
-    const before = line.text.substring(0, cursor.startOffset);
+    let before = line.text.substring(0, cursor.startOffset);
 
-    let match = before.match(/([a-zA-Z0-9:]+)$/);
     let triggerLength = 0;
+    const lastChar = before.slice(-1);
 
-    if (!match) {
-      match = before.match(/([a-zA-Z0-9:]+)\\$/);
-      if (match) {
-        triggerLength = 1;
-      }
+    if (lastChar === "\\") {
+      triggerLength = 1;
+      before = before.slice(0, -1);
     }
 
+    const match = before.match(/([a-zA-Z0-9:]+)$/);
     if (!match) return false;
+
     const abbr = match[1];
     if (!this.emmet[abbr]) return false;
 
@@ -676,7 +677,6 @@ class Bce {
     const isTab = e.key === "Tab" || e.key === "tab" || e.keyCode === 9;
     const isBackslash = e.key === "\\" || e.keyCode === 220;
 
-    // === ПРОВЕРКА НАСТРОЙКИ EMMET ===
     if (this.options.enableEmmet && (isTab || isBackslash)) {
       if (this.tryEmmet()) {
         e.preventDefault();
@@ -684,7 +684,6 @@ class Bce {
       }
     }
 
-    // Если Emmet отключен или не сработал, Tab всё равно должен делать отступ
     if (isTab) {
       e.preventDefault();
       this.ignoreNextInput = true;
@@ -991,7 +990,6 @@ class Bce {
   }
 
   onInput(e) {
-    // === ПРОВЕРКА НАСТРОЙКИ EMMET ДЛЯ МОБИЛЬНЫХ (ввод \) ===
     if (this.options.enableEmmet && e.data === "\\") {
       if (this.tryEmmet()) {
         return;

@@ -1,4 +1,3 @@
-/* Подключение JetBrains Mono с поддержкой кириллицы и латиницы */
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
 
 :root {
@@ -8,20 +7,22 @@
     --bce-gutter-fg: #858585;
     --bce-selection: #264f78;
     --bce-active-line-bg: #2a2d2e;
-    --bce-tag: #569cd6;
-    --bce-attr-name: #9cdcfe;
-    --bce-attr-value: #ce9178;
-    --bce-bracket: #ffd700;
+    
+    /* === ОБНОВЛЕННЫЕ ЦВЕТА ПОДсветки === */
+    --bce-tag: #cc6666;
+    --bce-attr-name: #cc6666;
+    --bce-attr-value: #cc6666;
+    --bce-bracket: #cc6666;
+    --bce-attr-eq: #cc6666; /* Цвет для знака = */
     --bce-comment: #6a9955;
 
-    /* Единый шрифт с идеальным выравниванием кириллицы и латиницы */
     --bce-font-mono: 'JetBrains Mono', 'Roboto Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
 }
 
 .bce-editor {
     position: relative;
     font-family: var(--bce-font-mono);
-    font-size: 16px; /* КРИТИЧЕСКИ ВАЖНО: предотвращает авто-зум iOS при фокусе */
+    font-size: 16px;
     line-height: 1.5;
     background: var(--bce-bg);
     color: var(--bce-fg);
@@ -31,7 +32,7 @@
     height: auto;
     width: 100%;
     box-sizing: border-box;
-    -webkit-tap-highlight-color: transparent; /* Убирает синюю вспышку при тапе на Android/iOS */
+    -webkit-tap-highlight-color: transparent;
 }
 
 .bce-editor.bce-no-gutter .bce-gutter {
@@ -48,7 +49,7 @@
     background: var(--bce-gutter-bg);
     color: var(--bce-gutter-fg);
     font-family: var(--bce-font-mono);
-    font-size: 13px; /* Номера строк чуть меньше для визуальной иерархии */
+    font-size: 13px;
     padding: 8px 8px 8px 12px;
     text-align: right;
     user-select: none;
@@ -57,7 +58,7 @@
 }
 
 .bce-gutter-line {
-    height: 24px; /* 16px * 1.5 = 24px. Идеальное соответствие строкам контента */
+    height: 24px;
     line-height: 24px;
 }
 
@@ -92,19 +93,18 @@
     padding: 0;
 }
 
-/* Подсветка только активной строки */
 .bce-line.bce-active {
     background: var(--bce-active-line-bg);
 }
 
-/* Синтаксическая подсветка HTML */
+/* === ПРАВИЛА ПОДСВЕТКИ === */
 .bce-tag { color: var(--bce-tag); }
 .bce-attr-name { color: var(--bce-attr-name); }
 .bce-attr-value { color: var(--bce-attr-value); }
+.bce-attr-eq { color: var(--bce-attr-eq); } /* Подсветка знака = */
 .bce-bracket { color: var(--bce-bracket); }
 .bce-comment { color: var(--bce-comment); font-style: italic; }
 
-/* Стиль выделения текста */
 .bce-content ::selection {
     background: var(--bce-selection);
 }
