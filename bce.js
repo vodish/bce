@@ -458,7 +458,6 @@ class Bce {
       );
     }
 
-    // Если после удаления осталась только одна пустая строка, выдаем ей новый ID
     if (this.lines.length === 1 && this.lines[0].text === "") {
       this.lines[0].id = this.newId();
     }
@@ -657,9 +656,7 @@ class Bce {
       return;
     }
 
-    // === КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Перехват Backspace и Delete ===
-    // Это предотвращает хаотичное объединение DOM-элементов браузером,
-    // которое приводило к потере или изменению ID строк.
+    // === ОБРАБОТКА BACKSPACE И DELETE ===
     if (e.key === "Backspace" || e.key === "Delete") {
       const cursor = this.getCursor();
       if (cursor) {
@@ -667,6 +664,7 @@ class Bce {
           cursor.startLine !== cursor.endLine ||
           cursor.startOffset !== cursor.endOffset;
 
+        // 1. Если есть выделение, просто удаляем его
         if (isSelection) {
           e.preventDefault();
           this.ignoreNextInput = true;
@@ -675,8 +673,44 @@ class Bce {
           return;
         }
 
+        const currentLineIdx = cursor.startLine;
+        const currentLine = this.lines[currentLineIdx];
+
+        // 2. НОВОЕ ПРАВИЛО: Если строка абсолютно пустая и это не единственная строка, удаляем именно её
+        if (currentLine.text === "" && this.lines.length > 1) {
+          e.preventDefault();
+          this.ignoreNextInput = true;
+
+          // Удаляем пустую строку из массива (её ID исчезает)
+          this.lines.splice(currentLineIdx, 1);
+
+          // Определяем новую позицию курсора
+          let newLineIdx = currentLineIdx;
+          let newOffset = 0;
+
+          if (currentLineIdx > 0) {
+            // Если есть предыдущая строка, переносим курсор в её конец
+            newLineIdx = currentLineIdx - 1;
+            newOffset = this.lines[newLineIdx].text.length;
+          } else {
+            // Если это была первая строка, курсор остаётся в начале новой первой строки
+            newLineIdx = 0;
+            newOffset = 0;
+          }
+
+          this.render();
+          this.setCursor({
+            startLine: newLineIdx,
+            startOffset: newOffset,
+            endLine: newLineIdx,
+            endOffset: newOffset,
+          });
+          this.pushHistory();
+          return;
+        }
+
+        // 3. Стандартное поведение для НЕпустых строк (объединение с соседней)
         if (e.key === "Backspace") {
-          // Курсор в начале строки (не первой) -> объединяем с предыдущей строкой
           if (cursor.startOffset === 0 && cursor.startLine > 0) {
             e.preventDefault();
             this.ignoreNextInput = true;
@@ -686,7 +720,7 @@ class Bce {
             const prevLen = prevLine.text.length;
 
             prevLine.text += currLine.text; // Предыдущая строка сохраняет свой ID
-            this.lines.splice(cursor.startLine, 1); // Текущая строка удаляется
+            this.lines.splice(cursor.startLine, 1); // Текущая удаляется
 
             this.render();
             this.setCursor({
@@ -699,9 +733,8 @@ class Bce {
             return;
           }
         } else if (e.key === "Delete") {
-          // Курсор в конце строки (не последней) -> объединяем со следующей строкой
           if (
-            cursor.startOffset === this.lines[cursor.startLine].text.length &&
+            cursor.startOffset === currentLine.text.length &&
             cursor.startLine < this.lines.length - 1
           ) {
             e.preventDefault();
@@ -712,7 +745,7 @@ class Bce {
             const currLen = currLine.text.length;
 
             currLine.text += nextLine.text; // Текущая строка сохраняет свой ID
-            this.lines.splice(cursor.startLine + 1, 1); // Следующая строка удаляется
+            this.lines.splice(cursor.startLine + 1, 1); // Следующая удаляется
 
             this.render();
             this.setCursor({
@@ -894,8 +927,6 @@ class Bce {
     const lineEls = this.content.querySelectorAll(".bce-line");
     const newLines = [];
 
-    // Если количество строк в DOM совпадает с нашим массивом, просто обновляем текст,
-    // жестко сохраняя оригинальные ID (это происходит при обычном вводе символов)
     if (lineEls.length === this.lines.length) {
       lineEls.forEach((el, idx) => {
         newLines.push({
@@ -904,7 +935,6 @@ class Bce {
         });
       });
     } else {
-      // Если количество не совпадает (браузер что-то сломал), пытаемся восстановить по data-line-id
       const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
       lineEls.forEach((el) => {
         const text = el.textContent || "";
@@ -917,7 +947,6 @@ class Bce {
       });
     }
 
-    // Если после всего осталась одна пустая строка, даем ей новый ID (полная очистка)
     if (newLines.length === 1 && newLines[0].text === "") {
       newLines[0].id = this.newId();
     }
@@ -937,7 +966,7 @@ class Bce {
     e.preventDefault();
     const text = (e.clipboardData || window.clipboardData).getData("text");
     if (text) {
-      this.ignoreNextInput = true; // Предотвращаем конфликт с onInput после вставки
+      this.ignoreNextInput = true;
       this.insertText(text.replace(/\r\n?/g, "\n"));
     }
   }
