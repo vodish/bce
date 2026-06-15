@@ -14,6 +14,7 @@ class Bce {
         tabSize: 4,
         initialText: "",
         showLineNumbers: false,
+        enableEmmet: true, // === НОВАЯ НАСТРОЙКА: Emmet включен по умолчанию ===
       },
       options,
     );
@@ -44,8 +45,6 @@ class Bce {
       h2: "<h2>|</h2>",
       h3: "<h3>|</h3>",
     };
-
-    // === ИЗМЕНЕНИЕ: Триггеры теперь Tab и \ (обратный слеш) ===
     this.emmetTriggers = ["Tab", "\\"];
 
     this.build();
@@ -95,6 +94,11 @@ class Bce {
       this.container.classList.add("bce-no-gutter");
     }
     this.render();
+  }
+
+  // === НОВЫЙ МЕТОД: Динамическое включение/отключение Emmet ===
+  setEnableEmmet(enable) {
+    this.options.enableEmmet = enable;
   }
 
   bindEvents() {
@@ -604,16 +608,26 @@ class Bce {
     const line = this.lines[cursor.startLine];
     const before = line.text.substring(0, cursor.startOffset);
 
-    const m = before.match(/([a-zA-Z0-9:]+)$/);
-    if (!m) return false;
-    const abbr = m[1];
+    let match = before.match(/([a-zA-Z0-9:]+)$/);
+    let triggerLength = 0;
+
+    if (!match) {
+      match = before.match(/([a-zA-Z0-9:]+)\\$/);
+      if (match) {
+        triggerLength = 1;
+      }
+    }
+
+    if (!match) return false;
+    const abbr = match[1];
     if (!this.emmet[abbr]) return false;
 
     const expansion = this.emmet[abbr];
     const cursorPos = expansion.indexOf("|");
     const clean = expansion.replace("|", "");
 
-    const startReplace = cursor.startOffset - abbr.length;
+    const startReplace = cursor.startOffset - abbr.length - triggerLength;
+
     line.text =
       line.text.substring(0, startReplace) +
       clean +
@@ -659,23 +673,23 @@ class Bce {
       return;
     }
 
-    // === ИЗМЕНЕНИЕ: Проверка на Tab или \ (обратный слеш) ===
     const isTab = e.key === "Tab" || e.key === "tab" || e.keyCode === 9;
     const isBackslash = e.key === "\\" || e.keyCode === 220;
-    const isEmmetTrigger = isTab || isBackslash;
 
-    if (isEmmetTrigger) {
+    // === ПРОВЕРКА НАСТРОЙКИ EMMET ===
+    if (this.options.enableEmmet && (isTab || isBackslash)) {
       if (this.tryEmmet()) {
         e.preventDefault();
         return;
       }
-      // Если это Tab и Emmet не сработал, выполняем стандартный Tab
-      if (isTab) {
-        e.preventDefault();
-        this.ignoreNextInput = true;
-        this.handleTab(e.shiftKey);
-        return;
-      }
+    }
+
+    // Если Emmet отключен или не сработал, Tab всё равно должен делать отступ
+    if (isTab) {
+      e.preventDefault();
+      this.ignoreNextInput = true;
+      this.handleTab(e.shiftKey);
+      return;
     }
 
     if (e.key === "Backspace" || e.key === "Delete") {
@@ -977,6 +991,13 @@ class Bce {
   }
 
   onInput(e) {
+    // === ПРОВЕРКА НАСТРОЙКИ EMMET ДЛЯ МОБИЛЬНЫХ (ввод \) ===
+    if (this.options.enableEmmet && e.data === "\\") {
+      if (this.tryEmmet()) {
+        return;
+      }
+    }
+
     if (this.ignoreNextInput) {
       this.ignoreNextInput = false;
       return;

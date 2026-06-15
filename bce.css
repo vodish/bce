@@ -1,3 +1,6 @@
+/* Подключение JetBrains Mono с поддержкой кириллицы и латиницы */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+
 :root {
     --bce-bg: #1e1e1e;
     --bce-fg: #d4d4d4;
@@ -10,21 +13,25 @@
     --bce-attr-value: #ce9178;
     --bce-bracket: #ffd700;
     --bce-comment: #6a9955;
+
+    /* Единый шрифт с идеальным выравниванием кириллицы и латиницы */
+    --bce-font-mono: 'JetBrains Mono', 'Roboto Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
 }
 
 .bce-editor {
     position: relative;
-    font-family: 'Consolas', 'Courier New', monospace;
-    font-size: 14px;
+    font-family: var(--bce-font-mono);
+    font-size: 16px; /* КРИТИЧЕСКИ ВАЖНО: предотвращает авто-зум iOS при фокусе */
     line-height: 1.5;
     background: var(--bce-bg);
     color: var(--bce-fg);
     border: 1px solid #3c3c3c;
-    border-radius: 4px;
+    border-radius: 6px;
     overflow: visible;
     height: auto;
     width: 100%;
     box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent; /* Убирает синюю вспышку при тапе на Android/iOS */
 }
 
 .bce-editor.bce-no-gutter .bce-gutter {
@@ -40,6 +47,8 @@
     flex-shrink: 0;
     background: var(--bce-gutter-bg);
     color: var(--bce-gutter-fg);
+    font-family: var(--bce-font-mono);
+    font-size: 13px; /* Номера строк чуть меньше для визуальной иерархии */
     padding: 8px 8px 8px 12px;
     text-align: right;
     user-select: none;
@@ -48,8 +57,8 @@
 }
 
 .bce-gutter-line {
-    height: 21px;
-    line-height: 21px;
+    height: 24px; /* 16px * 1.5 = 24px. Идеальное соответствие строкам контента */
+    line-height: 24px;
 }
 
 .bce-gutter-line.bce-active {
@@ -62,6 +71,9 @@
     padding: 8px 12px;
     outline: none;
     width: 100%;
+    font-family: var(--bce-font-mono);
+    font-size: 16px;
+    line-height: 1.5;
     white-space: pre-wrap;
     word-wrap: break-word;
     overflow-wrap: break-word;
@@ -70,8 +82,8 @@
 }
 
 .bce-line {
-    min-height: 21px;
-    line-height: 21px;
+    min-height: 24px;
+    line-height: 1.5;
     position: relative;
     white-space: pre-wrap;
     word-wrap: break-word;
@@ -80,16 +92,19 @@
     padding: 0;
 }
 
+/* Подсветка только активной строки */
 .bce-line.bce-active {
     background: var(--bce-active-line-bg);
 }
 
+/* Синтаксическая подсветка HTML */
 .bce-tag { color: var(--bce-tag); }
 .bce-attr-name { color: var(--bce-attr-name); }
 .bce-attr-value { color: var(--bce-attr-value); }
 .bce-bracket { color: var(--bce-bracket); }
 .bce-comment { color: var(--bce-comment); font-style: italic; }
 
+/* Стиль выделения текста */
 .bce-content ::selection {
     background: var(--bce-selection);
 }
