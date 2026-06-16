@@ -9,15 +9,13 @@ class Bce {
 
     if (!this.container) throw new Error("Bce: контейнер не найден");
 
-    this.options = Object.assign(
-      {
-        tabSize: 4,
-        initialText: "",
-        showLineNumbers: false,
-        enableEmmet: true,
-      },
-      options,
-    );
+    this.options = {
+      tabSize: 4,
+      initialText: "",
+      showLineNumbers: false,
+      enableEmmet: true,
+      ...options,
+    };
 
     this.lineIdCounter = 0;
     this.lines = [];
@@ -119,29 +117,27 @@ class Bce {
 
     this.content.addEventListener("keyup", (e) => {
       this.updateActiveLine();
-      // Сбрасываем якорь выделения, если shift не зажат
-      if (!e.shiftKey) {
-        this._selAnchor = null;
-        this._selDesiredCol = undefined;
-      }
+      if (!e.shiftKey) this.resetSelectionAnchor();
     });
 
     this.content.addEventListener("mouseup", () => {
       this.updateActiveLine();
-      // При клике мышью сбрасываем shift-якорь
-      this._selAnchor = null;
-      this._selDesiredCol = undefined;
+      this.resetSelectionAnchor();
     });
 
     this.content.addEventListener("click", () => {
       this.updateActiveLine();
-      this._selAnchor = null;
-      this._selDesiredCol = undefined;
+      this.resetSelectionAnchor();
     });
   }
 
   newId() {
     return ++this.lineIdCounter;
+  }
+
+  resetSelectionAnchor() {
+    this._selAnchor = null;
+    this._selDesiredCol = undefined;
   }
 
   addLine(text, index = this.lines.length) {
@@ -178,10 +174,7 @@ class Bce {
 
     if (cursor) this.setCursor(cursor);
     this.updateActiveLine();
-    this.resize();
   }
-
-  resize() {}
 
   updateActiveLine() {
     const lines = this.content.querySelectorAll(".bce-line");
@@ -202,6 +195,24 @@ class Bce {
       const activeGutterEl = this.gutter.children[cursor.startLine];
       if (activeGutterEl) activeGutterEl.classList.add("bce-active");
     }
+  }
+
+  _clampOffset(lineIdx, off) {
+    const line = this.lines[lineIdx];
+    if (!line) return 0;
+    return Math.max(0, Math.min(off, line.text.length));
+  }
+
+  _getMovingEnd(anchor) {
+    const cur = this.getCursor();
+    if (!cur) return { line: anchor.line, offset: anchor.offset };
+    if (
+      anchor.line < cur.startLine ||
+      (anchor.line === cur.startLine && anchor.offset <= cur.startOffset)
+    ) {
+      return { line: cur.endLine, offset: cur.endOffset };
+    }
+    return { line: cur.startLine, offset: cur.startOffset };
   }
 
   highlight(text) {
@@ -315,13 +326,6 @@ class Bce {
     };
   }
 
-  textLength(node) {
-    if (node.nodeType === Node.TEXT_NODE) return node.textContent.length;
-    let len = 0;
-    for (const c of node.childNodes) len += this.textLength(c);
-    return len;
-  }
-
   setCursor(cursor) {
     const getEndOfLine = (lineEl) => {
       let last = lineEl;
@@ -397,6 +401,12 @@ class Bce {
     }
   }
 
+  commitChange(cursor) {
+    this.render();
+    if (cursor) this.setCursor(cursor);
+    this.pushHistory();
+  }
+
   pushHistory() {
     this.history = this.history.slice(0, this.historyIndex + 1);
     const snapshot = {
@@ -447,8 +457,7 @@ class Bce {
   }
 
   getLeadingSpaces(text) {
-    const m = text.match(/^[ \t]*/);
-    return m ? m[0] : "";
+    return text.match(/^[ \t]*/)?.[0] ?? "";
   }
 
   getSelectedText(cursor) {
@@ -504,8 +513,7 @@ class Bce {
       this.lines[0].id = this.newId();
     }
 
-    this.render();
-    this.setCursor({
+    this.commitChange({
       startLine: cursor.startLine,
       startOffset: cursor.startOffset,
       endLine: cursor.startLine,
@@ -527,8 +535,7 @@ class Bce {
 
     if (parts.length === 1) {
       currentLine.text = before + parts[0] + after;
-      this.render();
-      this.setCursor({
+      this.commitChange({
         startLine: c.startLine,
         startOffset: before.length + parts[0].length,
         endLine: c.startLine,
@@ -545,17 +552,15 @@ class Bce {
       };
       this.lines.splice(c.startLine + parts.length - 1, 0, lastLine);
 
-      this.render();
       const finalLine = c.startLine + parts.length - 1;
       const finalOffset = parts[parts.length - 1].length;
-      this.setCursor({
+      this.commitChange({
         startLine: finalLine,
         startOffset: finalOffset,
         endLine: finalLine,
         endOffset: finalOffset,
       });
     }
-    this.pushHistory();
   }
 
   doAction(action) {
@@ -592,8 +597,7 @@ class Bce {
     const copy = { id: this.newId(), text: original.text };
     if (dir > 0) {
       this.lines.splice(idx + 1, 0, copy);
-      this.render();
-      this.setCursor({
+      this.commitChange({
         startLine: idx + 1,
         startOffset: cursor.startOffset,
         endLine: idx + 1,
@@ -601,15 +605,13 @@ class Bce {
       });
     } else {
       this.lines.splice(idx, 0, copy);
-      this.render();
-      this.setCursor({
+      this.commitChange({
         startLine: idx,
         startOffset: cursor.startOffset,
         endLine: idx,
         endOffset: cursor.endOffset,
       });
     }
-    this.pushHistory();
   }
 
   actionMove(dir) {
@@ -621,14 +623,12 @@ class Bce {
     const tmp = this.lines[idx];
     this.lines[idx] = this.lines[target];
     this.lines[target] = tmp;
-    this.render();
-    this.setCursor({
+    this.commitChange({
       startLine: target,
       startOffset: cursor.startOffset,
       endLine: target,
       endOffset: cursor.endOffset,
     });
-    this.pushHistory();
   }
 
   tryEmmet() {
@@ -656,16 +656,14 @@ class Bce {
       clean +
       line.text.substring(cursor.startOffset);
 
-    this.render();
     const newOffset =
       startReplace + (cursorPos >= 0 ? cursorPos : clean.length);
-    this.setCursor({
+    this.commitChange({
       startLine: cursor.startLine,
       startOffset: newOffset,
       endLine: cursor.startLine,
       endOffset: newOffset,
     });
-    this.pushHistory();
     return true;
   }
 
@@ -689,11 +687,7 @@ class Bce {
   }
 
   onKeyDown(e) {
-    // Сбрасываем shift-якорь при обычных перемещениях (без shift)
-    if (!e.shiftKey) {
-      this._selAnchor = null;
-      this._selDesiredCol = undefined;
-    }
+    if (!e.shiftKey) this.resetSelectionAnchor();
 
     const action = this.matchBinding(e);
     if (action) {
@@ -719,132 +713,121 @@ class Bce {
 
     if (e.key === "Backspace" || e.key === "Delete") {
       const cursor = this.getCursor();
-      if (cursor) {
-        const isSelection =
-          cursor.startLine !== cursor.endLine ||
-          cursor.startOffset !== cursor.endOffset;
+      if (!cursor) return;
 
-        if (isSelection && cursor.startOffset === 0) {
-          if (
-            cursor.startLine === cursor.endLine &&
-            cursor.endOffset === this.lines[cursor.startLine].text.length
-          ) {
-            e.preventDefault();
-            this.ignoreNextInput = true;
-            if (this.lines.length === 1) {
-              this.lines[0] = { id: this.newId(), text: "" };
-            } else {
-              this.lines[cursor.startLine].text = "";
-            }
-            this.render();
-            this.setCursor({
-              startLine: cursor.startLine,
-              startOffset: 0,
-              endLine: cursor.startLine,
-              endOffset: 0,
-            });
-            this.pushHistory();
-            return;
-          }
+      const isSelection =
+        cursor.startLine !== cursor.endLine ||
+        cursor.startOffset !== cursor.endOffset;
 
-          if (cursor.endOffset === 0 && cursor.endLine > cursor.startLine) {
-            e.preventDefault();
-            this.ignoreNextInput = true;
-            const deleteCount = cursor.endLine - cursor.startLine;
-            if (this.lines.length - deleteCount === 0) {
-              this.lines = [{ id: this.newId(), text: "" }];
-            } else {
-              this.lines.splice(cursor.startLine, deleteCount);
-            }
-            this.render();
-            const targetLine = Math.min(
-              cursor.startLine,
-              this.lines.length - 1,
-            );
-            this.setCursor({
-              startLine: targetLine,
-              startOffset: 0,
-              endLine: targetLine,
-              endOffset: 0,
-            });
-            this.pushHistory();
-            return;
-          }
-        }
-
-        if (isSelection) {
+      if (isSelection && cursor.startOffset === 0) {
+        if (
+          cursor.startLine === cursor.endLine &&
+          cursor.endOffset === this.lines[cursor.startLine].text.length
+        ) {
           e.preventDefault();
           this.ignoreNextInput = true;
-          this.deleteSelection(cursor);
-          this.pushHistory();
-          return;
-        }
-
-        const currentLineIdx = cursor.startLine;
-        const currentLine = this.lines[currentLineIdx];
-
-        if (currentLine.text === "" && this.lines.length > 1) {
-          e.preventDefault();
-          this.ignoreNextInput = true;
-          this.lines.splice(currentLineIdx, 1);
-          let newLineIdx = currentLineIdx;
-          let newOffset = 0;
-          if (currentLineIdx > 0) {
-            newLineIdx = currentLineIdx - 1;
-            newOffset = this.lines[newLineIdx].text.length;
+          if (this.lines.length === 1) {
+            this.lines[0] = { id: this.newId(), text: "" };
+          } else {
+            this.lines[cursor.startLine].text = "";
           }
-          this.render();
-          this.setCursor({
-            startLine: newLineIdx,
-            startOffset: newOffset,
-            endLine: newLineIdx,
-            endOffset: newOffset,
+          this.commitChange({
+            startLine: cursor.startLine,
+            startOffset: 0,
+            endLine: cursor.startLine,
+            endOffset: 0,
           });
-          this.pushHistory();
           return;
         }
 
-        if (e.key === "Backspace") {
-          if (cursor.startOffset === 0 && cursor.startLine > 0) {
-            e.preventDefault();
-            this.ignoreNextInput = true;
-            const prevLine = this.lines[cursor.startLine - 1];
-            const currLine = this.lines[cursor.startLine];
-            const prevLen = prevLine.text.length;
-            prevLine.text += currLine.text;
-            this.lines.splice(cursor.startLine, 1);
-            this.render();
-            this.setCursor({
-              startLine: cursor.startLine - 1,
-              startOffset: prevLen,
-              endLine: cursor.startLine - 1,
-              endOffset: prevLen,
-            });
-            this.pushHistory();
-            return;
+        if (cursor.endOffset === 0 && cursor.endLine > cursor.startLine) {
+          e.preventDefault();
+          this.ignoreNextInput = true;
+          const deleteCount = cursor.endLine - cursor.startLine;
+          if (this.lines.length - deleteCount === 0) {
+            this.lines = [{ id: this.newId(), text: "" }];
+          } else {
+            this.lines.splice(cursor.startLine, deleteCount);
           }
-        } else if (e.key === "Delete") {
-          if (
-            cursor.startOffset === currentLine.text.length &&
-            cursor.startLine < this.lines.length - 1
-          ) {
-            e.preventDefault();
-            this.ignoreNextInput = true;
-            const currLine = this.lines[cursor.startLine];
-            const nextLine = this.lines[cursor.startLine + 1];
-            const currLen = currLine.text.length;
-            currLine.text += nextLine.text;
-            this.lines.splice(cursor.startLine + 1, 1);
-            this.render();
-            this.setCursor({
-              startLine: cursor.startLine,
-              startOffset: currLen,
-              endLine: cursor.startLine,
-              endOffset: currLen,
-            });
-            this.pushHistory();
-            return;
-          }
+          const targetLine = Math.min(
+            cursor.startLine,
+            this.lines.length - 1,
+          );
+          this.commitChange({
+            startLine: targetLine,
+            startOffset: 0,
+            endLine: targetLine,
+            endOffset: 0,
+          });
+          return;
+        }
+      }
+
+      if (isSelection) {
+        e.preventDefault();
+        this.ignoreNextInput = true;
+        this.deleteSelection(cursor);
+        return;
+      }
+
+      const currentLineIdx = cursor.startLine;
+      const currentLine = this.lines[currentLineIdx];
+
+      if (currentLine.text === "" && this.lines.length > 1) {
+        e.preventDefault();
+        this.ignoreNextInput = true;
+        this.lines.splice(currentLineIdx, 1);
+        let newLineIdx = currentLineIdx;
+        let newOffset = 0;
+        if (currentLineIdx > 0) {
+          newLineIdx = currentLineIdx - 1;
+          newOffset = this.lines[newLineIdx].text.length;
+        }
+        this.commitChange({
+          startLine: newLineIdx,
+          startOffset: newOffset,
+          endLine: newLineIdx,
+          endOffset: newOffset,
+        });
+        return;
+      }
+
+      if (e.key === "Backspace") {
+        if (cursor.startOffset === 0 && cursor.startLine > 0) {
+          e.preventDefault();
+          this.ignoreNextInput = true;
+          const prevLine = this.lines[cursor.startLine - 1];
+          const currLine = this.lines[cursor.startLine];
+          const prevLen = prevLine.text.length;
+          prevLine.text += currLine.text;
+          this.lines.splice(cursor.startLine, 1);
+          this.commitChange({
+            startLine: cursor.startLine - 1,
+            startOffset: prevLen,
+            endLine: cursor.startLine - 1,
+            endOffset: prevLen,
+          });
+          return;
+        }
+      } else if (e.key === "Delete") {
+        if (
+          cursor.startOffset === currentLine.text.length &&
+          cursor.startLine < this.lines.length - 1
+        ) {
+          e.preventDefault();
+          this.ignoreNextInput = true;
+          const currLine = this.lines[cursor.startLine];
+          const nextLine = this.lines[cursor.startLine + 1];
+          const currLen = currLine.text.length;
+          currLine.text += nextLine.text;
+          this.lines.splice(cursor.startLine + 1, 1);
+          this.commitChange({
+            startLine: cursor.startLine,
+            startOffset: currLen,
+            endLine: cursor.startLine,
+            endOffset: currLen,
+          });
+          return;
         }
       }
     }
@@ -854,8 +837,6 @@ class Bce {
       const cursor = this.getCursor();
       if (!cursor) return;
 
-      // Сохраняем «якорь» выделения (точку, с которой началось выделение)
-      // при первом shift-нажатии или если shift не был зажат ранее
       if (!this._selAnchor) {
         this._selAnchor = {
           line: cursor.startLine,
@@ -864,32 +845,9 @@ class Bce {
       }
 
       const anchor = this._selAnchor;
+      const moving = this._getMovingEnd(anchor);
 
-      const clampOffset = (lineIdx, off) => {
-        const line = this.lines[lineIdx];
-        if (!line) return 0;
-        return Math.max(0, Math.min(off, line.text.length));
-      };
-
-      // Определяем, какая из двух границ — «подвижная» (та, что НЕ якорь)
-      // Для этого сравниваем текущий cursor с якорем
-      const getMovingEnd = () => {
-        const cur = this.getCursor();
-        if (!cur) return { line: anchor.line, offset: anchor.offset };
-        // Если якорь "меньше" start — значит выделение идёт от якоря вниз/вправо,
-        // подвижная граница — end. Иначе — start.
-        if (
-          anchor.line < cur.startLine ||
-          (anchor.line === cur.startLine && anchor.offset <= cur.startOffset)
-        ) {
-          return { line: cur.endLine, offset: cur.endOffset };
-        }
-        return { line: cur.startLine, offset: cur.startOffset };
-      };
-
-      const moving = getMovingEnd();
-
-      if (e.key === "ArrowDown" || e.key === "Down" || e.keyCode === 40) {
+      if (e.key === "ArrowDown") {
         e.preventDefault();
         if (moving.line >= this.lines.length - 1) return;
         const nextLine = moving.line + 1;
@@ -902,7 +860,7 @@ class Bce {
         );
         this.setCursor({
           startLine: anchor.line,
-          startOffset: clampOffset(anchor.line, anchor.offset),
+          startOffset: this._clampOffset(anchor.line, anchor.offset),
           endLine: nextLine,
           endOffset: targetOffset,
         });
@@ -910,7 +868,7 @@ class Bce {
         return;
       }
 
-      if (e.key === "ArrowUp" || e.key === "Up" || e.keyCode === 38) {
+      if (e.key === "ArrowUp") {
         e.preventDefault();
         if (moving.line === 0) return;
         const prevLine = moving.line - 1;
@@ -923,7 +881,7 @@ class Bce {
         );
         this.setCursor({
           startLine: anchor.line,
-          startOffset: clampOffset(anchor.line, anchor.offset),
+          startOffset: this._clampOffset(anchor.line, anchor.offset),
           endLine: prevLine,
           endOffset: targetOffset,
         });
@@ -931,14 +889,14 @@ class Bce {
         return;
       }
 
-      if (e.key === "ArrowLeft" || e.key === "Left" || e.keyCode === 37) {
+      if (e.key === "ArrowLeft") {
         e.preventDefault();
         const mLine = moving.line;
         const mOffset = moving.offset;
         if (mOffset > 0) {
           this.setCursor({
             startLine: anchor.line,
-            startOffset: clampOffset(anchor.line, anchor.offset),
+            startOffset: this._clampOffset(anchor.line, anchor.offset),
             endLine: mLine,
             endOffset: mOffset - 1,
           });
@@ -946,7 +904,7 @@ class Bce {
           const prevLine = mLine - 1;
           this.setCursor({
             startLine: anchor.line,
-            startOffset: clampOffset(anchor.line, anchor.offset),
+            startOffset: this._clampOffset(anchor.line, anchor.offset),
             endLine: prevLine,
             endOffset: this.lines[prevLine].text.length,
           });
@@ -956,7 +914,7 @@ class Bce {
         return;
       }
 
-      if (e.key === "ArrowRight" || e.key === "Right" || e.keyCode === 39) {
+      if (e.key === "ArrowRight") {
         e.preventDefault();
         const mLine = moving.line;
         const mOffset = moving.offset;
@@ -964,14 +922,14 @@ class Bce {
         if (mOffset < lineLen) {
           this.setCursor({
             startLine: anchor.line,
-            startOffset: clampOffset(anchor.line, anchor.offset),
+            startOffset: this._clampOffset(anchor.line, anchor.offset),
             endLine: mLine,
             endOffset: mOffset + 1,
           });
         } else if (mLine < this.lines.length - 1) {
           this.setCursor({
             startLine: anchor.line,
-            startOffset: clampOffset(anchor.line, anchor.offset),
+            startOffset: this._clampOffset(anchor.line, anchor.offset),
             endLine: mLine + 1,
             endOffset: 0,
           });
@@ -981,11 +939,11 @@ class Bce {
         return;
       }
 
-      if (e.key === "Home" || e.keyCode === 36) {
+      if (e.key === "Home") {
         e.preventDefault();
         this.setCursor({
           startLine: anchor.line,
-          startOffset: clampOffset(anchor.line, anchor.offset),
+          startOffset: this._clampOffset(anchor.line, anchor.offset),
           endLine: moving.line,
           endOffset: 0,
         });
@@ -994,12 +952,12 @@ class Bce {
         return;
       }
 
-      if (e.key === "End" || e.keyCode === 35) {
+      if (e.key === "End") {
         e.preventDefault();
         const lineIdx = moving.line;
         this.setCursor({
           startLine: anchor.line,
-          startOffset: clampOffset(anchor.line, anchor.offset),
+          startOffset: this._clampOffset(anchor.line, anchor.offset),
           endLine: lineIdx,
           endOffset: this.lines[lineIdx].text.length,
         });
@@ -1022,52 +980,27 @@ class Bce {
       }
 
       const anchor = this._selAnchor;
-      const clampOffset = (lineIdx, off) => {
-        const line = this.lines[lineIdx];
-        if (!line) return 0;
-        return Math.max(0, Math.min(off, line.text.length));
-      };
-
-      // Определяем подвижную границу (ту, что НЕ якорь)
-      const getMovingEnd = () => {
-        const cur = this.getCursor();
-        if (!cur) return { line: anchor.line, offset: anchor.offset };
-        if (
-          anchor.line < cur.startLine ||
-          (anchor.line === cur.startLine && anchor.offset <= cur.startOffset)
-        ) {
-          return { line: cur.endLine, offset: cur.endOffset };
-        }
-        return { line: cur.startLine, offset: cur.startOffset };
-      };
 
       const findWordBoundary = (text, pos, direction) => {
-        // direction: 1 = вправо (начало следующего слова), -1 = влево (начало текущего/предыдущего слова)
         const len = text.length;
         if (direction > 0) {
-          // Ищем конец текущего слова или начало следующего
           let i = pos;
-          // Пропускаем пробелы
           while (i < len && /\s/.test(text[i])) i++;
-          // Пропускаем буквы/цифры слова
           while (i < len && !/\s/.test(text[i])) i++;
           return i;
         } else {
-          // Ищем начало текущего или предыдущего слова
           let i = pos;
           if (i > 0) i--;
-          // Пропускаем пробелы справа налево
           while (i > 0 && /\s/.test(text[i])) i--;
-          // Пропускаем буквы/цифры слова справа налево
           while (i > 0 && !/\s/.test(text[i])) i--;
           if (i === 0 && !/\s/.test(text[0])) return 0;
           return i > 0 ? i + 1 : 0;
         }
       };
 
-      const moving = getMovingEnd();
+      const moving = this._getMovingEnd(anchor);
 
-      if (e.key === "ArrowLeft" || e.key === "Left" || e.keyCode === 37) {
+      if (e.key === "ArrowLeft") {
         e.preventDefault();
         const mLine = moving.line;
         const mOffset = moving.offset;
@@ -1079,7 +1012,7 @@ class Bce {
           );
           this.setCursor({
             startLine: anchor.line,
-            startOffset: clampOffset(anchor.line, anchor.offset),
+            startOffset: this._clampOffset(anchor.line, anchor.offset),
             endLine: mLine,
             endOffset: newOffset,
           });
@@ -1087,7 +1020,7 @@ class Bce {
           const prevLine = mLine - 1;
           this.setCursor({
             startLine: anchor.line,
-            startOffset: clampOffset(anchor.line, anchor.offset),
+            startOffset: this._clampOffset(anchor.line, anchor.offset),
             endLine: prevLine,
             endOffset: this.lines[prevLine].text.length,
           });
@@ -1097,7 +1030,7 @@ class Bce {
         return;
       }
 
-      if (e.key === "ArrowRight" || e.key === "Right" || e.keyCode === 39) {
+      if (e.key === "ArrowRight") {
         e.preventDefault();
         const mLine = moving.line;
         const mOffset = moving.offset;
@@ -1110,14 +1043,14 @@ class Bce {
           );
           this.setCursor({
             startLine: anchor.line,
-            startOffset: clampOffset(anchor.line, anchor.offset),
+            startOffset: this._clampOffset(anchor.line, anchor.offset),
             endLine: mLine,
             endOffset: newOffset,
           });
         } else if (mLine < this.lines.length - 1) {
           this.setCursor({
             startLine: anchor.line,
-            startOffset: clampOffset(anchor.line, anchor.offset),
+            startOffset: this._clampOffset(anchor.line, anchor.offset),
             endLine: mLine + 1,
             endOffset: 0,
           });
@@ -1162,15 +1095,13 @@ class Bce {
           this.lines[i].text = indent + this.lines[i].text;
         }
       }
-      this.render();
       const delta = shift ? -indent.length : indent.length;
-      this.setCursor({
+      this.commitChange({
         startLine: start,
         startOffset: Math.max(0, cursor.startOffset + delta),
         endLine: end,
         endOffset: Math.max(0, cursor.endOffset + delta),
       });
-      this.pushHistory();
     } else {
       const line = this.lines[cursor.startLine];
       if (shift) {
@@ -1184,14 +1115,12 @@ class Bce {
           line.text =
             beforeCursor.substring(0, beforeCursor.length - spacesToRemove) +
             line.text.substring(cursor.startOffset);
-          this.render();
-          this.setCursor({
+          this.commitChange({
             startLine: cursor.startLine,
             startOffset: cursor.startOffset - spacesToRemove,
             endLine: cursor.startLine,
             endOffset: cursor.startOffset - spacesToRemove,
           });
-          this.pushHistory();
         }
       } else {
         const leading = this.getLeadingSpaces(line.text);
@@ -1204,14 +1133,12 @@ class Bce {
           line.text.substring(0, cursor.startOffset) +
           add +
           line.text.substring(cursor.startOffset);
-        this.render();
-        this.setCursor({
+        this.commitChange({
           startLine: cursor.startLine,
           startOffset: cursor.startOffset + add.length,
           endLine: cursor.startLine,
           endOffset: cursor.startOffset + add.length,
         });
-        this.pushHistory();
       }
     }
   }
@@ -1245,14 +1172,12 @@ class Bce {
     const newLine = { id: this.newId(), text: indent + after };
     this.lines.splice(cursor.startLine + 1, 0, newLine);
 
-    this.render();
-    this.setCursor({
+    this.commitChange({
       startLine: cursor.startLine + 1,
       startOffset: indent.length,
       endLine: cursor.startLine + 1,
       endOffset: indent.length,
     });
-    this.pushHistory();
   }
 
   onInput(e) {
