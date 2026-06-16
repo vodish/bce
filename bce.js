@@ -46,7 +46,6 @@ class Bce {
       h3: "<h3>|</h3>",
     };
 
-    // === ИЗМЕНЕНИЕ: Триггер заменен с '%' на '.' ===
     this.emmetTriggers = ["Tab", "."];
 
     this.build();
@@ -872,7 +871,10 @@ class Bce {
         if (this._selDesiredCol === undefined) {
           this._selDesiredCol = cursor.endOffset;
         }
-        const targetOffset = Math.min(this._selDesiredCol, this.lines[nextLine].text.length);
+        const targetOffset = Math.min(
+          this._selDesiredCol,
+          this.lines[nextLine].text.length,
+        );
         this.setCursor({
           startLine: anchor.line,
           startOffset: clampOffset(anchor.line, anchor.offset),
@@ -890,7 +892,10 @@ class Bce {
         if (this._selDesiredCol === undefined) {
           this._selDesiredCol = cursor.endOffset;
         }
-        const targetOffset = Math.min(this._selDesiredCol, this.lines[prevLine].text.length);
+        const targetOffset = Math.min(
+          this._selDesiredCol,
+          this.lines[prevLine].text.length,
+        );
         this.setCursor({
           startLine: anchor.line,
           startOffset: clampOffset(anchor.line, anchor.offset),
@@ -1029,7 +1034,11 @@ class Bce {
         const endLine = cursor.endLine;
         const endOffset = cursor.endOffset;
         if (endOffset > 0) {
-          const newOffset = findWordBoundary(this.lines[endLine].text, endOffset, -1);
+          const newOffset = findWordBoundary(
+            this.lines[endLine].text,
+            endOffset,
+            -1,
+          );
           this.setCursor({
             startLine: anchor.line,
             startOffset: clampOffset(anchor.line, anchor.offset),
@@ -1056,7 +1065,11 @@ class Bce {
         const endOffset = cursor.endOffset;
         const lineLen = this.lines[endLine].text.length;
         if (endOffset < lineLen) {
-          const newOffset = findWordBoundary(this.lines[endLine].text, endOffset, 1);
+          const newOffset = findWordBoundary(
+            this.lines[endLine].text,
+            endOffset,
+            1,
+          );
           this.setCursor({
             startLine: anchor.line,
             startOffset: clampOffset(anchor.line, anchor.offset),
