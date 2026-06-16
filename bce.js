@@ -37,8 +37,9 @@ class Bce {
     ];
 
     this.emmet = {
-      a: '<a href="|"></a>',
       aa: '<a href="|" target="_blank"></a>',
+      11: '<a href="|"></a>',
+      a: '<a href="|"></a>',
       pre: "<pre>|</pre>",
       code: "<code>|</code>",
       h1: "<h1>|</h1>",
@@ -46,7 +47,7 @@ class Bce {
       h3: "<h3>|</h3>",
     };
 
-    this.emmetTriggers = ["Tab", "."];
+    this.emmetTriggers = ["Tab"];
 
     this.build();
     this.bindEvents();
@@ -642,11 +643,8 @@ class Bce {
     const line = this.lines[cursor.startLine];
     const before = line.text.substring(0, cursor.startOffset);
 
-    const m = before.match(/([a-zA-Z0-9:]+)$/);
-    if (!m) return false;
-
-    const abbr = m[1].toLowerCase();
-    if (!this.emmet[abbr]) return false;
+    const abbr = Object.keys(this.emmet).find((k) => before.endsWith(k));
+    if (!abbr) return false;
 
     const expansion = this.emmet[abbr];
     const cursorPos = expansion.indexOf("|");
