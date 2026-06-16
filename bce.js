@@ -117,9 +117,27 @@ class Bce {
       }
     });
 
-    this.content.addEventListener("keyup", () => this.updateActiveLine());
-    this.content.addEventListener("mouseup", () => this.updateActiveLine());
-    this.content.addEventListener("click", () => this.updateActiveLine());
+    this.content.addEventListener("keyup", (e) => {
+      this.updateActiveLine();
+      // Сбрасываем якорь выделения, если shift не зажат
+      if (!e.shiftKey) {
+        this._selAnchor = null;
+        this._selDesiredCol = undefined;
+      }
+    });
+
+    this.content.addEventListener("mouseup", () => {
+      this.updateActiveLine();
+      // При клике мышью сбрасываем shift-якорь
+      this._selAnchor = null;
+      this._selDesiredCol = undefined;
+    });
+
+    this.content.addEventListener("click", () => {
+      this.updateActiveLine();
+      this._selAnchor = null;
+      this._selDesiredCol = undefined;
+    });
   }
 
   newId() {
@@ -660,6 +678,12 @@ class Bce {
   }
 
   onKeyDown(e) {
+    // Сбрасываем shift-якорь при обычных перемещениях (без shift)
+    if (!e.shiftKey) {
+      this._selAnchor = null;
+      this._selDesiredCol = undefined;
+    }
+
     const action = this.matchBinding(e);
     if (action) {
       e.preventDefault();
@@ -814,35 +838,241 @@ class Bce {
       }
     }
 
-    if (e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+    // === Shift + стрелки: выделение ===
+    if (e.shiftKey && !e.altKey) {
+      const cursor = this.getCursor();
+      if (!cursor) return;
+
+      // Сохраняем «якорь» выделения (точку, с которой началось выделение)
+      // при первом shift-нажатии или если shift не был зажат ранее
+      if (!this._selAnchor) {
+        this._selAnchor = {
+          line: cursor.startLine,
+          offset: cursor.startOffset,
+        };
+      }
+
+      // Определяем, с какой стороны якорь: если выделение есть и якорь совпадает
+      // с одним из концов — корректируем. Иначе якорь = start выделения.
+      // Упрощённо: якорь всегда там, где курсор был до начала shift-движения.
+
+      const anchor = this._selAnchor;
+
+      const clampOffset = (lineIdx, off) => {
+        const line = this.lines[lineIdx];
+        if (!line) return 0;
+        return Math.max(0, Math.min(off, line.text.length));
+      };
+
       if (e.key === "ArrowDown" || e.key === "Down" || e.keyCode === 40) {
         e.preventDefault();
-        const cursor = this.getCursor();
-        if (cursor) {
-          const nextLine = Math.min(cursor.endLine + 1, this.lines.length - 1);
-          this.setCursor({
-            startLine: cursor.startLine,
-            startOffset: cursor.startOffset,
-            endLine: nextLine,
-            endOffset: 0,
-          });
-          this.updateActiveLine();
+        if (cursor.endLine >= this.lines.length - 1) return; // Уже в конце файла
+        const nextLine = cursor.endLine + 1;
+        // Сохраняем желаемую горизонтальную позицию
+        if (this._selDesiredCol === undefined) {
+          this._selDesiredCol = cursor.endOffset;
         }
+        const targetOffset = Math.min(this._selDesiredCol, this.lines[nextLine].text.length);
+        this.setCursor({
+          startLine: anchor.line,
+          startOffset: clampOffset(anchor.line, anchor.offset),
+          endLine: nextLine,
+          endOffset: targetOffset,
+        });
+        this.updateActiveLine();
         return;
       }
+
       if (e.key === "ArrowUp" || e.key === "Up" || e.keyCode === 38) {
         e.preventDefault();
-        const cursor = this.getCursor();
-        if (cursor) {
-          const prevLine = Math.max(cursor.endLine - 1, 0);
+        if (cursor.endLine === 0) return; // Уже в начале файла
+        const prevLine = cursor.endLine - 1;
+        if (this._selDesiredCol === undefined) {
+          this._selDesiredCol = cursor.endOffset;
+        }
+        const targetOffset = Math.min(this._selDesiredCol, this.lines[prevLine].text.length);
+        this.setCursor({
+          startLine: anchor.line,
+          startOffset: clampOffset(anchor.line, anchor.offset),
+          endLine: prevLine,
+          endOffset: targetOffset,
+        });
+        this.updateActiveLine();
+        return;
+      }
+
+      if (e.key === "ArrowLeft" || e.key === "Left" || e.keyCode === 37) {
+        e.preventDefault();
+        const endLine = cursor.endLine;
+        const endOffset = cursor.endOffset;
+        if (endOffset > 0) {
+          // Двигаем конечную границу влево на один символ
           this.setCursor({
-            startLine: cursor.startLine,
-            startOffset: cursor.startOffset,
+            startLine: anchor.line,
+            startOffset: clampOffset(anchor.line, anchor.offset),
+            endLine: endLine,
+            endOffset: endOffset - 1,
+          });
+        } else if (endLine > 0) {
+          // Переход на конец предыдущей строки
+          const prevLine = endLine - 1;
+          this.setCursor({
+            startLine: anchor.line,
+            startOffset: clampOffset(anchor.line, anchor.offset),
             endLine: prevLine,
+            endOffset: this.lines[prevLine].text.length,
+          });
+        }
+        this._selDesiredCol = undefined;
+        this.updateActiveLine();
+        return;
+      }
+
+      if (e.key === "ArrowRight" || e.key === "Right" || e.keyCode === 39) {
+        e.preventDefault();
+        const endLine = cursor.endLine;
+        const endOffset = cursor.endOffset;
+        const lineLen = this.lines[endLine].text.length;
+        if (endOffset < lineLen) {
+          this.setCursor({
+            startLine: anchor.line,
+            startOffset: clampOffset(anchor.line, anchor.offset),
+            endLine: endLine,
+            endOffset: endOffset + 1,
+          });
+        } else if (endLine < this.lines.length - 1) {
+          this.setCursor({
+            startLine: anchor.line,
+            startOffset: clampOffset(anchor.line, anchor.offset),
+            endLine: endLine + 1,
             endOffset: 0,
           });
-          this.updateActiveLine();
         }
+        this._selDesiredCol = undefined;
+        this.updateActiveLine();
+        return;
+      }
+
+      if (e.key === "Home" || e.keyCode === 36) {
+        e.preventDefault();
+        this.setCursor({
+          startLine: anchor.line,
+          startOffset: clampOffset(anchor.line, anchor.offset),
+          endLine: cursor.endLine,
+          endOffset: 0,
+        });
+        this._selDesiredCol = undefined;
+        this.updateActiveLine();
+        return;
+      }
+
+      if (e.key === "End" || e.keyCode === 35) {
+        e.preventDefault();
+        const lineIdx = cursor.endLine;
+        this.setCursor({
+          startLine: anchor.line,
+          startOffset: clampOffset(anchor.line, anchor.offset),
+          endLine: lineIdx,
+          endOffset: this.lines[lineIdx].text.length,
+        });
+        this._selDesiredCol = undefined;
+        this.updateActiveLine();
+        return;
+      }
+    }
+
+    // === Shift + Ctrl + стрелки: выделение по словам ===
+    if (e.shiftKey && (e.ctrlKey || e.metaKey) && !e.altKey) {
+      const cursor = this.getCursor();
+      if (!cursor) return;
+
+      if (!this._selAnchor) {
+        this._selAnchor = {
+          line: cursor.startLine,
+          offset: cursor.startOffset,
+        };
+      }
+
+      const anchor = this._selAnchor;
+      const clampOffset = (lineIdx, off) => {
+        const line = this.lines[lineIdx];
+        if (!line) return 0;
+        return Math.max(0, Math.min(off, line.text.length));
+      };
+
+      const findWordBoundary = (text, pos, direction) => {
+        // direction: 1 = вправо (начало следующего слова), -1 = влево (начало текущего/предыдущего слова)
+        const len = text.length;
+        if (direction > 0) {
+          // Ищем конец текущего слова или начало следующего
+          let i = pos;
+          // Пропускаем пробелы
+          while (i < len && /\s/.test(text[i])) i++;
+          // Пропускаем буквы/цифры слова
+          while (i < len && !/\s/.test(text[i])) i++;
+          return i;
+        } else {
+          // Ищем начало текущего или предыдущего слова
+          let i = pos;
+          if (i > 0) i--;
+          // Пропускаем пробелы справа налево
+          while (i > 0 && /\s/.test(text[i])) i--;
+          // Пропускаем буквы/цифры слова справа налево
+          while (i > 0 && !/\s/.test(text[i])) i--;
+          if (i === 0 && !/\s/.test(text[0])) return 0;
+          return i > 0 ? i + 1 : 0;
+        }
+      };
+
+      if (e.key === "ArrowLeft" || e.key === "Left" || e.keyCode === 37) {
+        e.preventDefault();
+        const endLine = cursor.endLine;
+        const endOffset = cursor.endOffset;
+        if (endOffset > 0) {
+          const newOffset = findWordBoundary(this.lines[endLine].text, endOffset, -1);
+          this.setCursor({
+            startLine: anchor.line,
+            startOffset: clampOffset(anchor.line, anchor.offset),
+            endLine: endLine,
+            endOffset: newOffset,
+          });
+        } else if (endLine > 0) {
+          const prevLine = endLine - 1;
+          this.setCursor({
+            startLine: anchor.line,
+            startOffset: clampOffset(anchor.line, anchor.offset),
+            endLine: prevLine,
+            endOffset: this.lines[prevLine].text.length,
+          });
+        }
+        this._selDesiredCol = undefined;
+        this.updateActiveLine();
+        return;
+      }
+
+      if (e.key === "ArrowRight" || e.key === "Right" || e.keyCode === 39) {
+        e.preventDefault();
+        const endLine = cursor.endLine;
+        const endOffset = cursor.endOffset;
+        const lineLen = this.lines[endLine].text.length;
+        if (endOffset < lineLen) {
+          const newOffset = findWordBoundary(this.lines[endLine].text, endOffset, 1);
+          this.setCursor({
+            startLine: anchor.line,
+            startOffset: clampOffset(anchor.line, anchor.offset),
+            endLine: endLine,
+            endOffset: newOffset,
+          });
+        } else if (endLine < this.lines.length - 1) {
+          this.setCursor({
+            startLine: anchor.line,
+            startOffset: clampOffset(anchor.line, anchor.offset),
+            endLine: endLine + 1,
+            endOffset: 0,
+          });
+        }
+        this._selDesiredCol = undefined;
+        this.updateActiveLine();
         return;
       }
     }
