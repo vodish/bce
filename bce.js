@@ -363,12 +363,26 @@ class Bce {
       return getEndOfLine(lineEl);
     };
 
-    const start = setPoint(cursor.startLine, cursor.startOffset);
+    // Нормализуем cursor: если end "меньше" start, меняем их местами
+    let startLine = cursor.startLine;
+    let startOffset = cursor.startOffset;
+    let endLine = cursor.endLine;
+    let endOffset = cursor.endOffset;
+
+    if (
+      startLine > endLine ||
+      (startLine === endLine && startOffset > endOffset)
+    ) {
+      // Меняем местами
+      [startLine, endLine] = [endLine, startLine];
+      [startOffset, endOffset] = [endOffset, startOffset];
+    }
+
+    const start = setPoint(startLine, startOffset);
     const end =
-      cursor.endLine === cursor.startLine &&
-      cursor.endOffset === cursor.startOffset
+      startLine === endLine && startOffset === endOffset
         ? start
-        : setPoint(cursor.endLine, cursor.endOffset);
+        : setPoint(endLine, endOffset);
 
     try {
       const range = document.createRange();
@@ -838,7 +852,7 @@ class Bce {
     }
 
     // === Shift + стрелки: выделение ===
-    if (e.shiftKey && !e.altKey) {
+    if (e.shiftKey && !e.altKey && !(e.ctrlKey || e.metaKey)) {
       const cursor = this.getCursor();
       if (!cursor) return;
 
@@ -851,10 +865,6 @@ class Bce {
         };
       }
 
-      // Определяем, с какой стороны якорь: если выделение есть и якорь совпадает
-      // с одним из концов — корректируем. Иначе якорь = start выделения.
-      // Упрощённо: якорь всегда там, где курсор был до начала shift-движения.
-
       const anchor = this._selAnchor;
 
       const clampOffset = (lineIdx, off) => {
@@ -863,13 +873,30 @@ class Bce {
         return Math.max(0, Math.min(off, line.text.length));
       };
 
+      // Определяем, какая из двух границ — «подвижная» (та, что НЕ якорь)
+      // Для этого сравниваем текущий cursor с якорем
+      const getMovingEnd = () => {
+        const cur = this.getCursor();
+        if (!cur) return { line: anchor.line, offset: anchor.offset };
+        // Если якорь "меньше" start — значит выделение идёт от якоря вниз/вправо,
+        // подвижная граница — end. Иначе — start.
+        if (
+          anchor.line < cur.startLine ||
+          (anchor.line === cur.startLine && anchor.offset <= cur.startOffset)
+        ) {
+          return { line: cur.endLine, offset: cur.endOffset };
+        }
+        return { line: cur.startLine, offset: cur.startOffset };
+      };
+
+      const moving = getMovingEnd();
+
       if (e.key === "ArrowDown" || e.key === "Down" || e.keyCode === 40) {
         e.preventDefault();
-        if (cursor.endLine >= this.lines.length - 1) return; // Уже в конце файла
-        const nextLine = cursor.endLine + 1;
-        // Сохраняем желаемую горизонтальную позицию
+        if (moving.line >= this.lines.length - 1) return;
+        const nextLine = moving.line + 1;
         if (this._selDesiredCol === undefined) {
-          this._selDesiredCol = cursor.endOffset;
+          this._selDesiredCol = moving.offset;
         }
         const targetOffset = Math.min(
           this._selDesiredCol,
@@ -887,10 +914,10 @@ class Bce {
 
       if (e.key === "ArrowUp" || e.key === "Up" || e.keyCode === 38) {
         e.preventDefault();
-        if (cursor.endLine === 0) return; // Уже в начале файла
-        const prevLine = cursor.endLine - 1;
+        if (moving.line === 0) return;
+        const prevLine = moving.line - 1;
         if (this._selDesiredCol === undefined) {
-          this._selDesiredCol = cursor.endOffset;
+          this._selDesiredCol = moving.offset;
         }
         const targetOffset = Math.min(
           this._selDesiredCol,
@@ -908,19 +935,17 @@ class Bce {
 
       if (e.key === "ArrowLeft" || e.key === "Left" || e.keyCode === 37) {
         e.preventDefault();
-        const endLine = cursor.endLine;
-        const endOffset = cursor.endOffset;
-        if (endOffset > 0) {
-          // Двигаем конечную границу влево на один символ
+        const mLine = moving.line;
+        const mOffset = moving.offset;
+        if (mOffset > 0) {
           this.setCursor({
             startLine: anchor.line,
             startOffset: clampOffset(anchor.line, anchor.offset),
-            endLine: endLine,
-            endOffset: endOffset - 1,
+            endLine: mLine,
+            endOffset: mOffset - 1,
           });
-        } else if (endLine > 0) {
-          // Переход на конец предыдущей строки
-          const prevLine = endLine - 1;
+        } else if (mLine > 0) {
+          const prevLine = mLine - 1;
           this.setCursor({
             startLine: anchor.line,
             startOffset: clampOffset(anchor.line, anchor.offset),
@@ -935,21 +960,21 @@ class Bce {
 
       if (e.key === "ArrowRight" || e.key === "Right" || e.keyCode === 39) {
         e.preventDefault();
-        const endLine = cursor.endLine;
-        const endOffset = cursor.endOffset;
-        const lineLen = this.lines[endLine].text.length;
-        if (endOffset < lineLen) {
+        const mLine = moving.line;
+        const mOffset = moving.offset;
+        const lineLen = this.lines[mLine].text.length;
+        if (mOffset < lineLen) {
           this.setCursor({
             startLine: anchor.line,
             startOffset: clampOffset(anchor.line, anchor.offset),
-            endLine: endLine,
-            endOffset: endOffset + 1,
+            endLine: mLine,
+            endOffset: mOffset + 1,
           });
-        } else if (endLine < this.lines.length - 1) {
+        } else if (mLine < this.lines.length - 1) {
           this.setCursor({
             startLine: anchor.line,
             startOffset: clampOffset(anchor.line, anchor.offset),
-            endLine: endLine + 1,
+            endLine: mLine + 1,
             endOffset: 0,
           });
         }
@@ -963,7 +988,7 @@ class Bce {
         this.setCursor({
           startLine: anchor.line,
           startOffset: clampOffset(anchor.line, anchor.offset),
-          endLine: cursor.endLine,
+          endLine: moving.line,
           endOffset: 0,
         });
         this._selDesiredCol = undefined;
@@ -973,7 +998,7 @@ class Bce {
 
       if (e.key === "End" || e.keyCode === 35) {
         e.preventDefault();
-        const lineIdx = cursor.endLine;
+        const lineIdx = moving.line;
         this.setCursor({
           startLine: anchor.line,
           startOffset: clampOffset(anchor.line, anchor.offset),
@@ -1005,6 +1030,19 @@ class Bce {
         return Math.max(0, Math.min(off, line.text.length));
       };
 
+      // Определяем подвижную границу (ту, что НЕ якорь)
+      const getMovingEnd = () => {
+        const cur = this.getCursor();
+        if (!cur) return { line: anchor.line, offset: anchor.offset };
+        if (
+          anchor.line < cur.startLine ||
+          (anchor.line === cur.startLine && anchor.offset <= cur.startOffset)
+        ) {
+          return { line: cur.endLine, offset: cur.endOffset };
+        }
+        return { line: cur.startLine, offset: cur.startOffset };
+      };
+
       const findWordBoundary = (text, pos, direction) => {
         // direction: 1 = вправо (начало следующего слова), -1 = влево (начало текущего/предыдущего слова)
         const len = text.length;
@@ -1029,24 +1067,26 @@ class Bce {
         }
       };
 
+      const moving = getMovingEnd();
+
       if (e.key === "ArrowLeft" || e.key === "Left" || e.keyCode === 37) {
         e.preventDefault();
-        const endLine = cursor.endLine;
-        const endOffset = cursor.endOffset;
-        if (endOffset > 0) {
+        const mLine = moving.line;
+        const mOffset = moving.offset;
+        if (mOffset > 0) {
           const newOffset = findWordBoundary(
-            this.lines[endLine].text,
-            endOffset,
+            this.lines[mLine].text,
+            mOffset,
             -1,
           );
           this.setCursor({
             startLine: anchor.line,
             startOffset: clampOffset(anchor.line, anchor.offset),
-            endLine: endLine,
+            endLine: mLine,
             endOffset: newOffset,
           });
-        } else if (endLine > 0) {
-          const prevLine = endLine - 1;
+        } else if (mLine > 0) {
+          const prevLine = mLine - 1;
           this.setCursor({
             startLine: anchor.line,
             startOffset: clampOffset(anchor.line, anchor.offset),
@@ -1061,26 +1101,26 @@ class Bce {
 
       if (e.key === "ArrowRight" || e.key === "Right" || e.keyCode === 39) {
         e.preventDefault();
-        const endLine = cursor.endLine;
-        const endOffset = cursor.endOffset;
-        const lineLen = this.lines[endLine].text.length;
-        if (endOffset < lineLen) {
+        const mLine = moving.line;
+        const mOffset = moving.offset;
+        const lineLen = this.lines[mLine].text.length;
+        if (mOffset < lineLen) {
           const newOffset = findWordBoundary(
-            this.lines[endLine].text,
-            endOffset,
+            this.lines[mLine].text,
+            mOffset,
             1,
           );
           this.setCursor({
             startLine: anchor.line,
             startOffset: clampOffset(anchor.line, anchor.offset),
-            endLine: endLine,
+            endLine: mLine,
             endOffset: newOffset,
           });
-        } else if (endLine < this.lines.length - 1) {
+        } else if (mLine < this.lines.length - 1) {
           this.setCursor({
             startLine: anchor.line,
             startOffset: clampOffset(anchor.line, anchor.offset),
-            endLine: endLine + 1,
+            endLine: mLine + 1,
             endOffset: 0,
           });
         }

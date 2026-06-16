@@ -105,6 +105,8 @@
 .bce-bracket { color: var(--bce-bracket); }
 .bce-comment { color: var(--bce-comment); font-style: italic; }
 
-.bce-content ::selection {
+.bce-content ::selection,
+.bce-content .bce-line ::selection,
+.bce-content .bce-line span::selection {
     background: var(--bce-selection);
 }
