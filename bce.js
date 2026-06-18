@@ -1146,27 +1146,33 @@ class Bce {
       const line = this.lines[cursor.startLine];
       if (shift) {
         const beforeCursor = line.text.substring(0, cursor.startOffset);
-        if (!/^ *$/.test(beforeCursor)) return;
-        const spacesToRemove = Math.min(
-          beforeCursor.length,
-          beforeCursor.length % tabSize || tabSize,
-        );
-        if (spacesToRemove > 0) {
+        // Считаем пробелы непосредственно перед курсором
+        let spaceCount = 0;
+        for (let i = beforeCursor.length - 1; i >= 0; i--) {
+          if (beforeCursor[i] === " ") spaceCount++;
+          else break;
+        }
+        if (spaceCount === 0) return;
+        // Предыдущий таб-стоп от позиции курсора
+        const prevTabStop =
+          Math.floor((cursor.startOffset - 1) / tabSize) * tabSize;
+        const spacesToRemove = cursor.startOffset - prevTabStop;
+        const removeCount = Math.min(spaceCount, spacesToRemove);
+        if (removeCount > 0) {
           line.text =
-            beforeCursor.substring(0, beforeCursor.length - spacesToRemove) +
+            beforeCursor.substring(0, beforeCursor.length - removeCount) +
             line.text.substring(cursor.startOffset);
           this.commitChange({
             startLine: cursor.startLine,
-            startOffset: cursor.startOffset - spacesToRemove,
+            startOffset: cursor.startOffset - removeCount,
             endLine: cursor.startLine,
-            endOffset: cursor.startOffset - spacesToRemove,
+            endOffset: cursor.startOffset - removeCount,
           });
         }
       } else {
-        const leading = this.getLeadingSpaces(line.text);
-        const currentLen = leading.length;
-        const target = Math.ceil((currentLen + 1) / tabSize) * tabSize;
-        const add = " ".repeat(target - currentLen);
+        const col = cursor.startOffset;
+        const target = Math.ceil((col + 1) / tabSize) * tabSize;
+        const add = " ".repeat(target - col);
         line.text =
           line.text.substring(0, cursor.startOffset) +
           add +
