@@ -849,7 +849,17 @@ class Bce {
 
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        if (moving.line >= this.lines.length - 1) return;
+        if (moving.line >= this.lines.length - 1) {
+          const lastLine = this.lines.length - 1;
+          this.setCursor({
+            startLine: anchor.line,
+            startOffset: this._clampOffset(anchor.line, anchor.offset),
+            endLine: lastLine,
+            endOffset: this.lines[lastLine].text.length,
+          });
+          this.updateActiveLine();
+          return;
+        }
         const nextLine = moving.line + 1;
         if (this._selDesiredCol === undefined) {
           this._selDesiredCol = moving.offset;
@@ -870,7 +880,16 @@ class Bce {
 
       if (e.key === "ArrowUp") {
         e.preventDefault();
-        if (moving.line === 0) return;
+        if (moving.line === 0) {
+          this.setCursor({
+            startLine: anchor.line,
+            startOffset: this._clampOffset(anchor.line, anchor.offset),
+            endLine: 0,
+            endOffset: 0,
+          });
+          this.updateActiveLine();
+          return;
+        }
         const prevLine = moving.line - 1;
         if (this._selDesiredCol === undefined) {
           this._selDesiredCol = moving.offset;
