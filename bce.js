@@ -1184,16 +1184,28 @@ class Bce {
     const after = line.text.substring(cursor.startOffset);
     const indent = this.getLeadingSpaces(before);
 
-    line.text = before;
-    const newLine = { id: this.newId(), text: indent + after };
-    this.lines.splice(cursor.startLine + 1, 0, newLine);
-
-    this.commitChange({
-      startLine: cursor.startLine + 1,
-      startOffset: indent.length,
-      endLine: cursor.startLine + 1,
-      endOffset: indent.length,
-    });
+    // Если курсор в начале строки и строка не пуста — вставляем пустую строку ПЕРЕД текущей
+    if (cursor.startOffset === 0 && line.text !== "") {
+      const newLine = { id: this.newId(), text: "" };
+      this.lines.splice(cursor.startLine, 0, newLine);
+      // Курсор остаётся на той же строке (она сдвинулась на +1)
+      this.commitChange({
+        startLine: cursor.startLine + 1,
+        startOffset: 0,
+        endLine: cursor.startLine + 1,
+        endOffset: 0,
+      });
+    } else {
+      line.text = before;
+      const newLine = { id: this.newId(), text: indent + after };
+      this.lines.splice(cursor.startLine + 1, 0, newLine);
+      this.commitChange({
+        startLine: cursor.startLine + 1,
+        startOffset: indent.length,
+        endLine: cursor.startLine + 1,
+        endOffset: indent.length,
+      });
+    }
   }
 
   onInput(e) {

@@ -182,13 +182,15 @@
 
 <script src="bce.js"></script>
 <script>
-    const editor = new Bce('#editor', {
-        initialText: `<h1>Привет с телефона!</h1>
+    const html = `<h1>Привет с телефона!</h1>
 <p>Это мобильный Bce.</p>
 <ul>
     <li>Введите h2 и нажмите \</li>
     <li>Клавиатура не будет зумить экран</li>
-</ul>`,
+</ul>`
+
+    const editor = new Bce('#editor', {
+        initialText: ``,
         showLineNumbers: false
     });
 
