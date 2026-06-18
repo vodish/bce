@@ -1199,6 +1199,29 @@ class Bce {
   onInput(e) {
     if (this.ignoreNextInput) {
       this.ignoreNextInput = false;
+      // Синхронизируем lines из DOM, но без render() и pushHistory
+      const lineEls = this.content.querySelectorAll(".bce-line");
+      const newLines = [];
+      if (lineEls.length === this.lines.length) {
+        lineEls.forEach((el, idx) => {
+          newLines.push({ id: this.lines[idx].id, text: el.textContent || "" });
+        });
+      } else {
+        const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
+        lineEls.forEach((el) => {
+          const text = el.textContent || "";
+          const lineId = parseInt(el.dataset.lineId, 10);
+          if (lineId && oldLinesMap.has(lineId)) {
+            newLines.push({ id: lineId, text });
+          } else {
+            newLines.push({ id: this.newId(), text });
+          }
+        });
+      }
+      if (newLines.length === 1 && newLines[0].text === "") {
+        newLines[0].id = this.newId();
+      }
+      this.lines = newLines;
       return;
     }
 
