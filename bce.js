@@ -1093,30 +1093,40 @@ class Bce {
       cursor.startLine === cursor.endLine &&
       cursor.startOffset === cursor.endOffset
     );
-    const indent = " ".repeat(this.options.tabSize);
+    const tabSize = this.options.tabSize;
 
     if (hasSelection) {
       const start = cursor.startLine;
       const end = cursor.endLine;
+      const deltas = [];
       if (shift) {
         for (let i = start; i <= end; i++) {
-          if (this.lines[i].text.startsWith(indent)) {
-            this.lines[i].text = this.lines[i].text.substring(indent.length);
-          } else if (this.lines[i].text.startsWith("\t")) {
-            this.lines[i].text = this.lines[i].text.substring(1);
-          }
+          const leading = this.getLeadingSpaces(this.lines[i].text);
+          const removeCount = leading.length > 0
+            ? Math.min(leading.length, leading.length % tabSize || tabSize)
+            : 0;
+          this.lines[i].text = this.lines[i].text.substring(removeCount);
+          deltas.push(-removeCount);
         }
       } else {
         for (let i = start; i <= end; i++) {
-          this.lines[i].text = indent + this.lines[i].text;
+          const leading = this.getLeadingSpaces(this.lines[i].text);
+          const currentLen = leading.length;
+          const target =
+            Math.ceil((currentLen + 1) / tabSize) * tabSize;
+          const add = " ".repeat(target - currentLen);
+          this.lines[i].text = add + this.lines[i].text;
+          deltas.push(add.length);
         }
       }
-      const delta = shift ? -indent.length : indent.length;
+      // Смещаем offset'ы с учётом дельт на строках start и end
+      const newStartOffset = Math.max(0, cursor.startOffset + deltas[0]);
+      const newEndOffset = Math.max(0, cursor.endOffset + deltas[deltas.length - 1]);
       this.commitChange({
         startLine: start,
-        startOffset: Math.max(0, cursor.startOffset + delta),
+        startOffset: newStartOffset,
         endLine: end,
-        endOffset: Math.max(0, cursor.endOffset + delta),
+        endOffset: newEndOffset,
       });
     } else {
       const line = this.lines[cursor.startLine];
@@ -1125,7 +1135,7 @@ class Bce {
         if (!/^ *$/.test(beforeCursor)) return;
         const spacesToRemove = Math.min(
           beforeCursor.length,
-          this.options.tabSize,
+          beforeCursor.length % tabSize || tabSize,
         );
         if (spacesToRemove > 0) {
           line.text =
@@ -1142,8 +1152,8 @@ class Bce {
         const leading = this.getLeadingSpaces(line.text);
         const currentLen = leading.length;
         const target =
-          Math.ceil((currentLen + 1) / this.options.tabSize) *
-          this.options.tabSize;
+          Math.ceil((currentLen + 1) / tabSize) *
+          tabSize;
         const add = " ".repeat(target - currentLen);
         line.text =
           line.text.substring(0, cursor.startOffset) +
