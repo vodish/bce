@@ -696,19 +696,19 @@ class Bce {
       return;
     }
 
-    // Проверка триггеров Emmet (теперь это Tab или .)
+    // Проверка триггеров Emmet
     if (this.options.enableEmmet && this.emmetTriggers.includes(e.key)) {
       if (this.tryEmmet()) {
         e.preventDefault();
         return;
       }
-      // Если Emmet не сработал, но это Tab, делаем стандартный отступ
-      if (e.key === "Tab" || e.key === "tab") {
-        e.preventDefault();
-        this.ignoreNextInput = true;
-        this.handleTab(e.shiftKey);
-        return;
-      }
+    }
+
+    if (e.key === "Tab" || e.key === "tab") {
+      e.preventDefault();
+      this.ignoreNextInput = true;
+      this.handleTab(e.shiftKey);
+      return;
     }
 
     if (e.key === "Backspace" || e.key === "Delete") {
@@ -749,10 +749,7 @@ class Bce {
           } else {
             this.lines.splice(cursor.startLine, deleteCount);
           }
-          const targetLine = Math.min(
-            cursor.startLine,
-            this.lines.length - 1,
-          );
+          const targetLine = Math.min(cursor.startLine, this.lines.length - 1);
           this.commitChange({
             startLine: targetLine,
             startOffset: 0,
