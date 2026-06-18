@@ -36,7 +36,6 @@ class Bce {
 
     this.emmet = {
       aa: '<a href="|" target="_blank"></a>',
-      11: '<a href="|"></a>',
       a: '<a href="|"></a>',
       pre: "<pre>|</pre>",
       code: "<code>|</code>",
@@ -45,7 +44,7 @@ class Bce {
       h3: "<h3>|</h3>",
     };
 
-    this.emmetTriggers = ["Tab"];
+    this.emmetTriggers = ["Tab", ","];
 
     this.build();
     this.bindEvents();
@@ -112,6 +111,18 @@ class Bce {
       } else if (e.inputType === "historyRedo") {
         e.preventDefault();
         this.redo();
+      }
+
+      // Fallback для мобильных устройств: beforeinput с "," ловится
+      // даже когда keydown не срабатывает (IME, голосовой ввод, Swype)
+      if (
+        this.options.enableEmmet &&
+        e.inputType === "insertText" &&
+        e.data === ","
+      ) {
+        if (this.tryEmmet()) {
+          e.preventDefault();
+        }
       }
     });
 
@@ -1102,9 +1113,10 @@ class Bce {
       if (shift) {
         for (let i = start; i <= end; i++) {
           const leading = this.getLeadingSpaces(this.lines[i].text);
-          const removeCount = leading.length > 0
-            ? Math.min(leading.length, leading.length % tabSize || tabSize)
-            : 0;
+          const removeCount =
+            leading.length > 0
+              ? Math.min(leading.length, leading.length % tabSize || tabSize)
+              : 0;
           this.lines[i].text = this.lines[i].text.substring(removeCount);
           deltas.push(-removeCount);
         }
@@ -1112,8 +1124,7 @@ class Bce {
         for (let i = start; i <= end; i++) {
           const leading = this.getLeadingSpaces(this.lines[i].text);
           const currentLen = leading.length;
-          const target =
-            Math.ceil((currentLen + 1) / tabSize) * tabSize;
+          const target = Math.ceil((currentLen + 1) / tabSize) * tabSize;
           const add = " ".repeat(target - currentLen);
           this.lines[i].text = add + this.lines[i].text;
           deltas.push(add.length);
@@ -1121,7 +1132,10 @@ class Bce {
       }
       // Смещаем offset'ы с учётом дельт на строках start и end
       const newStartOffset = Math.max(0, cursor.startOffset + deltas[0]);
-      const newEndOffset = Math.max(0, cursor.endOffset + deltas[deltas.length - 1]);
+      const newEndOffset = Math.max(
+        0,
+        cursor.endOffset + deltas[deltas.length - 1],
+      );
       this.commitChange({
         startLine: start,
         startOffset: newStartOffset,
@@ -1151,9 +1165,7 @@ class Bce {
       } else {
         const leading = this.getLeadingSpaces(line.text);
         const currentLen = leading.length;
-        const target =
-          Math.ceil((currentLen + 1) / tabSize) *
-          tabSize;
+        const target = Math.ceil((currentLen + 1) / tabSize) * tabSize;
         const add = " ".repeat(target - currentLen);
         line.text =
           line.text.substring(0, cursor.startOffset) +
