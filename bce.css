@@ -20,7 +20,7 @@
 }
 
 .bce-editor {
-    position: relative;
+    /* position: relative; */
     font-family: var(--bce-font-mono);
     font-size: 15px;
     line-height: 1.5;
@@ -85,7 +85,7 @@
 .bce-line {
     min-height: 24px;
     line-height: 1.5;
-    position: relative;
+    /* position: relative; */
     white-space: pre-wrap;
     word-wrap: break-word;
     overflow-wrap: break-word;
