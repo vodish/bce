@@ -437,6 +437,7 @@ class Bce {
     if (snap.cursor) {
       requestAnimationFrame(() => this.setCursor(snap.cursor));
     }
+    this._fireOnChange();
   }
 
   undo() {
