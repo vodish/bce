@@ -467,6 +467,13 @@ class Bce {
     return this.lines.map((line) => ({ id: line.id, text: line.text }));
   }
 
+  setLines(lines = []) {
+    this.lines = [];
+    lines.forEach(({ text }) => this.addLine(text));
+    this.render();
+    this.pushHistory();
+  }
+
   getLeadingSpaces(text) {
     return text.match(/^[ \t]*/)?.[0] ?? "";
   }
