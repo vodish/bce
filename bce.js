@@ -13,7 +13,7 @@ class Bce {
       tabSize: 4,
       initialText: "",
       showLineNumbers: false,
-      enableEmmet: true,
+      enableEmmet: false,
       ...options,
     };
 
