@@ -170,11 +170,15 @@
     <button onclick="loadLines()">📋 Строки (JSON)</button>
     <button class="secondary" onclick="editor.undo()">↩ Отменить</button>
     <button class="secondary" onclick="editor.redo()">↪ Вернуть</button>
-    <button class="secondary" onclick="loadSample()">🔄 Пример</button>
     
     <label class="checkbox-label">
         <input type="checkbox" id="toggleLines" onchange="toggleLineNumbers(this.checked)">
         Показывать номера строк
+    </label>
+
+    <label class="checkbox-label">
+        <input type="checkbox" id="toggleOnChange" onchange="toggleOnChange(this.checked)">
+        Отслеживать изменения (onChange)
     </label>
 </div>
 
@@ -227,7 +231,7 @@
     updateCursorMonitor();
 
     function loadLines() {
-        document.getElementById('output').textContent = JSON.stringify(editor.getLines(), null, 2);
+        document.getElementById('output').textContent = JSON.stringify(editor.lines, null, 2);
         // Прокрутка к результату на мобильных
         document.getElementById('output').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     }
@@ -236,15 +240,15 @@
         editor.setShowLineNumbers(show);
     }
 
-    function loadSample() {
-        editor.setText(`<div class="container">
-    <h1>Заголовок</h1>
-    <p>Текст с <a href="#">ссылкой</a>.</p>
-    <pre><code>function hello() {
-    console.log("Hello!");
-}</code></pre>
-</div>`);
-        loadLines();
+    function toggleOnChange(enable) {
+        if (enable) {
+            editor.onChange((ed) => {
+                console.log(ed.lines)
+            });
+        } else {
+            editor.onChange(null);
+            document.getElementById('output').textContent = 'Отслеживание отключено';
+        }
     }
 </script>
 

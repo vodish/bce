@@ -23,6 +23,7 @@ class Bce {
     this.historyIndex = -1;
     this.maxHistory = 200;
     this.ignoreNextInput = false;
+    this._onChangeCallback = null;
 
     this.keyBindings = [
       { code: "KeyC", ctrl: true, shift: false, action: "copy" },
@@ -416,6 +417,7 @@ class Bce {
     this.render();
     if (cursor) this.setCursor(cursor);
     this.pushHistory();
+    this._fireOnChange();
   }
 
   pushHistory() {
@@ -461,10 +463,7 @@ class Bce {
     parts.forEach((p) => this.addLine(p));
     this.render();
     this.pushHistory();
-  }
-
-  getLines() {
-    return this.lines.map((line) => ({ id: line.id, text: line.text }));
+    this._fireOnChange();
   }
 
   setLines(lines = []) {
@@ -472,6 +471,20 @@ class Bce {
     lines.forEach(({ text }) => this.addLine(text));
     this.render();
     this.pushHistory();
+    this._fireOnChange();
+  }
+
+  onChange(fn) {
+    this._onChangeCallback = fn;
+    if (typeof fn === "function") {
+      fn(this);
+    }
+  }
+
+  _fireOnChange() {
+    if (typeof this._onChangeCallback === "function") {
+      this._onChangeCallback(this);
+    }
   }
 
   getLeadingSpaces(text) {
@@ -1269,6 +1282,7 @@ class Bce {
         newLines[0].id = this.newId();
       }
       this.lines = newLines;
+      this._fireOnChange();
       return;
     }
 
@@ -1301,6 +1315,7 @@ class Bce {
     this.render();
     if (cursor) requestAnimationFrame(() => this.setCursor(cursor));
     this.pushHistory();
+    this._fireOnChange();
   }
 
   onPaste(e) {
