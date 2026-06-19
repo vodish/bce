@@ -471,7 +471,7 @@ class Bce {
   setLines(lines = []) {
     this.lines = [];
     this.lineIdCounter = 0;
-    lines.forEach((text) => this.addLine(text));
+    lines.forEach(({ text }) => this.addLine(text));
     this.render();
     this.pushHistory();
     this._fireOnChange();
