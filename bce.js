@@ -460,6 +460,7 @@ class Bce {
 
   setText(text) {
     this.lines = [];
+    this.lineIdCounter = 0;
     const parts = text.split("\n");
     parts.forEach((p) => this.addLine(p));
     this.render();
@@ -469,6 +470,7 @@ class Bce {
 
   setLines(lines = []) {
     this.lines = [];
+    this.lineIdCounter = 0;
     lines.forEach((text) => this.addLine(text));
     this.render();
     this.pushHistory();
