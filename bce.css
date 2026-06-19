@@ -22,7 +22,7 @@
 .bce-editor {
     position: relative;
     font-family: var(--bce-font-mono);
-    font-size: 16px;
+    font-size: 15px;
     line-height: 1.5;
     background: var(--bce-bg);
     color: var(--bce-fg);
