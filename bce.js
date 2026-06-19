@@ -478,8 +478,8 @@ class Bce {
   }
 
   onChange(fn) {
-    this._onChangeCallback = fn;
     if (typeof fn === "function") {
+      this._onChangeCallback = fn;
       fn(this);
     }
   }
