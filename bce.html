@@ -199,7 +199,19 @@
         // enableEmmet: true,
     });
     
-    editor.setShowLineNumbers
+    editor.setLines([
+  {
+    "id": 555,
+    "row": "пять"
+  },
+  {
+    "id": 2222,
+    "row": "два"
+  },
+  {
+    "id": 6,
+    "row": "    шесть"
+  }])
 
     function updateCursorMonitor() {
         const cursor = editor.getCursor();

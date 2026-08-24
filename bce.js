@@ -180,13 +180,12 @@ class Bce {
 
   /**
    * Устанавливает строки из массива объектов.
-   * @param {Array<{ row: string }>} lines
+   * @param {Array<{ id: number, row: string }>} lines
    * @returns {void}
    */
   setLines(lines = []) {
-    this.lines = [];
-    this.lineIdCounter = 0;
-    lines.forEach(({ row }) => this.addLine(row));
+    this.lines = lines.map(({ id, row }) => ({ id, row }));
+    this.lineIdCounter = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
     this.render();
     this.pushHistory();
     this._fireOnChange();
