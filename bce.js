@@ -57,6 +57,42 @@
 
 class Bce {
   /**
+   * Статическая проверка равенства двух массивов строк.
+   * @param {Array<{ id: number, row: string }>} arr1
+   * @param {Array<{ id: number, row: string }>} arr2
+   * @returns {boolean}
+   */
+  static equalLines(arr1, arr2) {
+    const len = arr1.length;
+
+    // 1. Мгновенная проверка по длине
+    if (len !== arr2.length) return false;
+
+    // 2. Быстрый проход по элементам
+    for (let i = 0; i < len; i++) {
+      const obj1 = arr1[i];
+      const obj2 = arr2[i];
+
+      // Если это ссылки на один и тот же объект в памяти — пропускаем шаг
+      if (obj1 === obj2) continue;
+
+      // Если один из них не существует или не объект
+      if (!obj1 || !obj2) return false;
+
+      // Попарное сравнение ключей
+      const keys = Object.keys(obj1);
+      if (keys.length !== Object.keys(obj2).length) return false;
+
+      for (let j = 0; j < keys.length; j++) {
+        const key = keys[j];
+        if (obj1[key] !== obj2[key]) return false;
+      }
+    }
+
+    return true; // Полностью идентичны
+  }
+
+  /**
    * @param {string | HTMLElement} container  — селектор или DOM-элемент контейнера
    * @param {BceOptions}           [options]  — настройки редактора
    */
@@ -189,6 +225,15 @@ class Bce {
     this.render();
     this.pushHistory();
     this._fireOnChange();
+  }
+
+  /**
+   * Сравнивает переданный массив строк с текущим содержимым редактора.
+   * @param {BceLine[]} lines — массив строк для сравнения
+   * @returns {boolean}
+   */
+  checkLines(lines = []) {
+    return Bce.equalLines(this.lines, lines);
   }
 
   /* ================================================================
@@ -1859,4 +1904,4 @@ class Bce {
   }
 }
 
-window.Bce = Bce;
+// window.Bce = Bce;
