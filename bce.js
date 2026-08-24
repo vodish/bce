@@ -1,5 +1,7 @@
 // @ts-nocheck
 "use strict";
+// @ts-nocheck
+"use strict";
 
 /**
  * @typedef {Object} BceLine
@@ -63,33 +65,19 @@ class Bce {
    * @returns {boolean}
    */
   static equalLines(arr1, arr2) {
-    const len = arr1.length;
-
-    // 1. Мгновенная проверка по длине
-    if (len !== arr2.length) return false;
-
-    // 2. Быстрый проход по элементам
-    for (let i = 0; i < len; i++) {
-      const obj1 = arr1[i];
-      const obj2 = arr2[i];
-
-      // Если это ссылки на один и тот же объект в памяти — пропускаем шаг
+    if (arr1.length !== arr2.length) return false;
+    for (let i = 0; i < arr1.length; i++) {
+      const obj1 = arr1[i],
+        obj2 = arr2[i];
       if (obj1 === obj2) continue;
-
-      // Если один из них не существует или не объект
       if (!obj1 || !obj2) return false;
-
-      // Попарное сравнение ключей
       const keys = Object.keys(obj1);
       if (keys.length !== Object.keys(obj2).length) return false;
-
-      for (let j = 0; j < keys.length; j++) {
-        const key = keys[j];
+      for (const key of keys) {
         if (obj1[key] !== obj2[key]) return false;
       }
     }
-
-    return true; // Полностью идентичны
+    return true;
   }
 
   /**
@@ -97,12 +85,10 @@ class Bce {
    * @param {BceOptions}           [options]  — настройки редактора
    */
   constructor(container, options = {}) {
-    /** @type {HTMLElement} */
     this.container =
       typeof container === "string"
         ? document.querySelector(container)
         : container;
-
     if (!this.container) throw new Error("Bce: контейнер не найден");
 
     /** @type {Required<BceOptions>} */
@@ -116,22 +102,16 @@ class Bce {
 
     /** @type {number} */
     this.lineIdCounter = 0;
-
     /** @type {BceLine[]} */
     this.lines = [];
-
     /** @type {BceHistorySnapshot[]} */
     this.history = [];
-
     /** @type {number} */
     this.historyIndex = -1;
-
     /** @type {number} */
     this.maxHistory = 200;
-
     /** @type {boolean} */
     this.ignoreNextInput = false;
-
     /** @type {BceOnChangeCallback | null} */
     this._onChangeCallback = null;
 
@@ -159,19 +139,14 @@ class Bce {
 
     /** @type {string[]} */
     this.emmetTriggers = ["Tab", ","];
-
     /** @type {HTMLDivElement} */
     this.wrapper = null;
-
     /** @type {HTMLDivElement} */
     this.gutter = null;
-
     /** @type {HTMLDivElement} */
     this.content = null;
-
     /** @type {BceAnchor | null} */
     this._selAnchor = null;
-
     /** @type {number | undefined} */
     this._selDesiredCol = undefined;
 
@@ -188,8 +163,8 @@ class Bce {
   }
 
   /* ================================================================
-   *  Публичные методы: получение / установка текста
-   * ================================================================ */
+  Публичные методы: получение / установка текста
+  ================================================================= */
 
   /**
    * Возвращает весь текст редактора.
@@ -207,8 +182,7 @@ class Bce {
   setText(text) {
     this.lines = [];
     this.lineIdCounter = 0;
-    const parts = text.split("\n");
-    parts.forEach((p) => this.addLine(p));
+    text.split("\n").forEach((p) => this.addLine(p));
     this.render();
     this.pushHistory();
     this._fireOnChange();
@@ -237,8 +211,8 @@ class Bce {
   }
 
   /* ================================================================
-   *  Построение DOM
-   * ================================================================ */
+  Построение DOM
+  ================================================================= */
 
   /**
    * Создаёт внутреннюю разметку редактора (обёртка, гуттер, контент).
@@ -246,17 +220,14 @@ class Bce {
    */
   build() {
     this.container.classList.add("bce-editor");
-    if (!this.options.showLineNumbers) {
+    if (!this.options.showLineNumbers)
       this.container.classList.add("bce-no-gutter");
-    }
     this.container.innerHTML = "";
 
     this.wrapper = document.createElement("div");
     this.wrapper.className = "bce-container";
-
     this.gutter = document.createElement("div");
     this.gutter.className = "bce-gutter";
-
     this.content = document.createElement("div");
     this.content.className = "bce-content";
     this.content.setAttribute("contenteditable", "true");
@@ -265,8 +236,7 @@ class Bce {
     this.content.setAttribute("autocapitalize", "off");
     this.content.setAttribute("enterkeyhint", "enter");
 
-    this.wrapper.appendChild(this.gutter);
-    this.wrapper.appendChild(this.content);
+    this.wrapper.append(this.gutter, this.content);
     this.container.appendChild(this.wrapper);
   }
 
@@ -277,11 +247,7 @@ class Bce {
    */
   setShowLineNumbers(show) {
     this.options.showLineNumbers = show;
-    if (show) {
-      this.container.classList.remove("bce-no-gutter");
-    } else {
-      this.container.classList.add("bce-no-gutter");
-    }
+    this.container.classList.toggle("bce-no-gutter", !show);
     this.render();
   }
 
@@ -295,8 +261,8 @@ class Bce {
   }
 
   /* ================================================================
-   *  Привязка событий
-   * ================================================================ */
+  Привязка событий
+  ================================================================= */
 
   /**
    * Навешивает все обработчики событий на редактируемую область.
@@ -306,48 +272,39 @@ class Bce {
     this.content.addEventListener("keydown", (e) => this.onKeyDown(e));
     this.content.addEventListener("input", (e) => this.onInput(e));
     this.content.addEventListener("paste", (e) => this.onPaste(e));
-
     this.content.addEventListener("beforeinput", (e) => {
       const inputEvent = /** @type {InputEvent} */ (e);
-
       if (inputEvent.inputType === "historyUndo") {
         inputEvent.preventDefault();
         this.undo();
       } else if (inputEvent.inputType === "historyRedo") {
         inputEvent.preventDefault();
         this.redo();
-      }
-
-      if (
+      } else if (
         this.options.enableEmmet &&
         inputEvent.inputType === "insertText" &&
-        inputEvent.data === ","
+        inputEvent.data === "," &&
+        this.tryEmmet()
       ) {
-        if (this.tryEmmet()) {
-          inputEvent.preventDefault();
-        }
+        inputEvent.preventDefault();
       }
     });
 
+    const resetHandlers = () => {
+      this.updateActiveLine();
+      this.resetSelectionAnchor();
+    };
     this.content.addEventListener("keyup", (e) => {
       this.updateActiveLine();
       if (!e.shiftKey) this.resetSelectionAnchor();
     });
-
-    this.content.addEventListener("mouseup", () => {
-      this.updateActiveLine();
-      this.resetSelectionAnchor();
-    });
-
-    this.content.addEventListener("click", () => {
-      this.updateActiveLine();
-      this.resetSelectionAnchor();
-    });
+    this.content.addEventListener("mouseup", resetHandlers);
+    this.content.addEventListener("click", resetHandlers);
   }
 
   /* ================================================================
-   *  Утилиты строк / курсора
-   * ================================================================ */
+  Утилиты строк / курсора
+  ================================================================= */
 
   /**
    * Генерирует новый уникальный id строки.
@@ -373,15 +330,14 @@ class Bce {
    * @returns {BceLine}
    */
   addLine(text, index = this.lines.length) {
-    /** @type {BceLine} */
     const line = { id: this.newId(), row: text };
     this.lines.splice(index, 0, line);
     return line;
   }
 
   /* ================================================================
-   *  Рендеринг
-   * ================================================================ */
+  Рендеринг
+  ================================================================= */
 
   /**
    * Полный перерендер редактора (гуттер + контент) из модели `lines`.
@@ -391,9 +347,7 @@ class Bce {
     if (this.lines.length === 0) {
       this.lines.push({ id: this.newId(), row: "" });
     }
-
     const cursor = this.getCursor();
-
     this.content.innerHTML = "";
     this.gutter.innerHTML = "";
 
@@ -420,11 +374,13 @@ class Bce {
    * @returns {void}
    */
   updateActiveLine() {
-    const lines = this.content.querySelectorAll(".bce-line");
-    lines.forEach((line) => line.classList.remove("bce-active"));
-
-    const gutterLines = this.gutter.querySelectorAll(".bce-gutter-line");
-    gutterLines.forEach((gl) => gl.classList.remove("bce-active"));
+    const toggleClass = (el, cls) => el?.classList.toggle(cls, false);
+    this.content
+      .querySelectorAll(".bce-line")
+      .forEach((l) => toggleClass(l, "bce-active"));
+    this.gutter
+      .querySelectorAll(".bce-gutter-line")
+      .forEach((l) => toggleClass(l, "bce-active"));
 
     const cursor = this.getCursor();
     if (
@@ -432,15 +388,8 @@ class Bce {
       cursor.startLine >= 0 &&
       cursor.startLine < this.lines.length
     ) {
-      const activeLineEl = /** @type {HTMLElement} */ (
-        this.content.children[cursor.startLine]
-      );
-      if (activeLineEl) activeLineEl.classList.add("bce-active");
-
-      const activeGutterEl = /** @type {HTMLElement} */ (
-        this.gutter.children[cursor.startLine]
-      );
-      if (activeGutterEl) activeGutterEl.classList.add("bce-active");
+      this.content.children[cursor.startLine]?.classList.add("bce-active");
+      this.gutter.children[cursor.startLine]?.classList.add("bce-active");
     }
   }
 
@@ -452,8 +401,7 @@ class Bce {
    */
   _clampOffset(lineIdx, off) {
     const line = this.lines[lineIdx];
-    if (!line) return 0;
-    return Math.max(0, Math.min(off, line.row.length));
+    return line ? Math.max(0, Math.min(off, line.row.length)) : 0;
   }
 
   /**
@@ -464,19 +412,15 @@ class Bce {
   _getMovingEnd(anchor) {
     const cur = this.getCursor();
     if (!cur) return { line: anchor.line, offset: anchor.offset };
-
-    if (
-      anchor.line < cur.startLine ||
+    return anchor.line < cur.startLine ||
       (anchor.line === cur.startLine && anchor.offset <= cur.startOffset)
-    ) {
-      return { line: cur.endLine, offset: cur.endOffset };
-    }
-    return { line: cur.startLine, offset: cur.startOffset };
+      ? { line: cur.endLine, offset: cur.endOffset }
+      : { line: cur.startLine, offset: cur.startOffset };
   }
 
   /* ================================================================
-   *  Подсветка синтаксиса
-   * ================================================================ */
+  Подсветка синтаксиса
+  ================================================================= */
 
   /**
    * Экранирует текст и оборачивает HTML-теги / атрибуты / комментарии
@@ -486,7 +430,6 @@ class Bce {
    */
   highlight(text) {
     if (!text) return "";
-
     let safe = text
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -500,42 +443,27 @@ class Bce {
     safe = safe.replace(
       /(&lt;\/?)([a-zA-Z][a-zA-Z0-9-]*)((?:\s+[a-zA-Z_:][a-zA-Z0-9_.:-]*(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'&gt;]+))?)*)\s*(\/?&gt;)/g,
       (_m, open, name, attrs, close) => {
-        /** @type {string} */
         const ha = attrs.replace(
           /([a-zA-Z_:][a-zA-Z0-9_.:-]*)(\s*=\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"'&gt;]+)/g,
           (_mm, an, eq, av) =>
-            '<span class="bce-attr-name">' +
-            an +
-            "</span>" +
-            '<span class="bce-attr-eq">' +
-            eq +
-            "</span>" +
-            '<span class="bce-attr-value">' +
-            av +
-            "</span>",
+            `<span class="bce-attr-name">${an}</span>` +
+            `<span class="bce-attr-eq">${eq}</span>` +
+            `<span class="bce-attr-value">${av}</span>`,
         );
-
         return (
-          '<span class="bce-bracket">' +
-          open +
-          "</span>" +
-          '<span class="bce-tag">' +
-          name +
-          "</span>" +
+          `<span class="bce-bracket">${open}</span>` +
+          `<span class="bce-tag">${name}</span>` +
           ha +
-          '<span class="bce-bracket">' +
-          close +
-          "</span>"
+          `<span class="bce-bracket">${close}</span>`
         );
       },
     );
-
     return safe;
   }
 
   /* ================================================================
-   *  Курсор: чтение / запись
-   * ================================================================ */
+  Курсор: чтение / запись
+  ================================================================= */
 
   /**
    * Считывает текущую позицию курсора из `window.getSelection()`.
@@ -544,7 +472,6 @@ class Bce {
   getCursor() {
     const sel = window.getSelection();
     if (!sel || sel.rangeCount === 0) return null;
-
     const range = sel.getRangeAt(0);
 
     /**
@@ -554,9 +481,7 @@ class Bce {
      * @returns {{ lineIndex: number, offset: number }}
      */
     const getNodeInfo = (node, offset) => {
-      /** @type {Node | null} */
       let lineEl = node;
-
       while (
         lineEl &&
         lineEl !== this.content &&
@@ -578,47 +503,35 @@ class Bce {
         ) {
           return { lineIndex: 0, offset: 0 };
         }
-        const htmlLine = /** @type {HTMLElement} */ (lineEl);
         return {
-          lineIndex: parseInt(htmlLine.dataset.lineIndex ?? "0", 10),
-          offset: htmlLine.textContent.length,
+          lineIndex: parseInt(lineEl.dataset.lineIndex ?? "0", 10),
+          offset: lineEl.textContent.length,
         };
       }
 
-      const htmlLineEl = /** @type {HTMLElement} */ (lineEl);
-      const lineIndex = parseInt(htmlLineEl.dataset.lineIndex ?? "0", 10);
+      const lineIndex = parseInt(lineEl.dataset.lineIndex ?? "0", 10);
       let charOffset = 0;
-      let found = false;
-
       const walker = document.createTreeWalker(
         lineEl,
         NodeFilter.SHOW_TEXT,
         null,
         false,
       );
-
-      /** @type {Node | null} */
       let currentNode = walker.nextNode();
+
       while (currentNode) {
         if (currentNode === node) {
           charOffset += offset;
-          found = true;
-          break;
+          return { lineIndex, offset: charOffset };
         }
         charOffset += currentNode.textContent.length;
         currentNode = walker.nextNode();
       }
-
-      if (!found) {
-        charOffset = htmlLineEl.textContent.length;
-      }
-
-      return { lineIndex, offset: charOffset };
+      return { lineIndex, offset: lineEl.textContent.length };
     };
 
     const start = getNodeInfo(range.startContainer, range.startOffset);
     const end = getNodeInfo(range.endContainer, range.endOffset);
-
     return {
       startLine: start.lineIndex,
       startOffset: start.offset,
@@ -639,15 +552,11 @@ class Bce {
      * @returns {BceNodePoint}
      */
     const getEndOfLine = (lineEl) => {
-      /** @type {Node} */
       let last = lineEl;
       while (last.lastChild) last = last.lastChild;
-
-      if (last.nodeType === Node.TEXT_NODE) {
-        const textNode = /** @type {Text} */ (last);
-        return { node: textNode, offset: textNode.textContent.length };
-      }
-      return { node: lineEl, offset: lineEl.childNodes.length };
+      return last.nodeType === Node.TEXT_NODE
+        ? { node: last, offset: last.textContent.length }
+        : { node: lineEl, offset: lineEl.childNodes.length };
     };
 
     /**
@@ -657,11 +566,8 @@ class Bce {
      * @returns {BceNodePoint}
      */
     const setPoint = (lineIndex, offset) => {
-      const lineEl = /** @type {HTMLElement} */ (
-        this.content.children[lineIndex]
-      );
+      const lineEl = this.content.children[lineIndex];
       if (!lineEl) return { node: this.content, offset: 0 };
-
       if (
         lineEl.childNodes.length === 0 ||
         (lineEl.childNodes.length === 1 &&
@@ -670,41 +576,29 @@ class Bce {
         return { node: lineEl, offset: 0 };
       }
 
-      /** @type {number} */
       let remaining = offset;
-
-      /**
-       * Рекурсивный обход дерева узлов.
-       * @param {Node} n
-       * @returns {{ node: Node, offset: number, found: boolean } | null}
-       */
       const walk = (n) => {
         if (n.nodeType === Node.TEXT_NODE) {
-          const textNode = /** @type {Text} */ (n);
-          if (remaining <= textNode.textContent.length) {
-            return { node: textNode, offset: remaining, found: true };
+          if (remaining <= n.textContent.length) {
+            return { node: n, offset: remaining, found: true };
           }
-          remaining -= textNode.textContent.length;
+          remaining -= n.textContent.length;
           return null;
         }
-
         for (const c of n.childNodes) {
           const r = walk(c);
-          if (r && r.found) return r;
+          if (r?.found) return r;
         }
         return null;
       };
 
       const result = walk(lineEl);
-      if (result) return { node: result.node, offset: result.offset };
-      return getEndOfLine(lineEl);
+      return result
+        ? { node: result.node, offset: result.offset }
+        : getEndOfLine(lineEl);
     };
 
-    let startLine = cursor.startLine;
-    let startOffset = cursor.startOffset;
-    let endLine = cursor.endLine;
-    let endOffset = cursor.endOffset;
-
+    let { startLine, startOffset, endLine, endOffset } = cursor;
     if (
       startLine > endLine ||
       (startLine === endLine && startOffset > endOffset)
@@ -723,7 +617,6 @@ class Bce {
       const range = document.createRange();
       range.setStart(start.node, start.offset);
       range.setEnd(end.node, end.offset);
-
       const sel = window.getSelection();
       if (sel) {
         sel.removeAllRanges();
@@ -735,8 +628,8 @@ class Bce {
   }
 
   /* ================================================================
-   *  История изменений (undo / redo)
-   * ================================================================ */
+  История изменений (undo / redo)
+  ================================================================= */
 
   /**
    * Применяет изменение: рендер, установка курсора, снимок в историю.
@@ -756,15 +649,10 @@ class Bce {
    */
   pushHistory() {
     this.history = this.history.slice(0, this.historyIndex + 1);
-
-    /** @type {BceHistorySnapshot} */
-    const snapshot = {
+    this.history.push({
       lines: this.lines.map((l) => ({ id: l.id, row: l.row })),
       cursor: this.getCursor(),
-    };
-
-    this.history.push(snapshot);
-
+    });
     if (this.history.length > this.maxHistory) this.history.shift();
     this.historyIndex = this.history.length - 1;
   }
@@ -777,12 +665,9 @@ class Bce {
   restoreSnapshot(snap) {
     this.lines = snap.lines.map((l) => ({ id: l.id, row: l.row }));
     this.render();
-
     if (snap.cursor) {
-      const cursorToRestore = snap.cursor;
-      requestAnimationFrame(() => this.setCursor(cursorToRestore));
+      requestAnimationFrame(() => this.setCursor(snap.cursor));
     }
-
     this._fireOnChange();
   }
 
@@ -809,8 +694,8 @@ class Bce {
   }
 
   /* ================================================================
-   *  Подписка на изменения
-   * ================================================================ */
+  Подписка на изменения
+  ================================================================= */
 
   /**
    * Регистрирует callback, вызываемый при каждом изменении.
@@ -830,14 +715,12 @@ class Bce {
    * @returns {void}
    */
   _fireOnChange() {
-    if (typeof this._onChangeCallback === "function") {
-      this._onChangeCallback(this);
-    }
+    this._onChangeCallback?.(this);
   }
 
   /* ================================================================
-   *  Работа с выделением и текстом
-   * ================================================================ */
+  Работа с выделением и текстом
+  ================================================================= */
 
   /**
    * Возвращает ведущие пробельные символы строки.
@@ -845,7 +728,7 @@ class Bce {
    * @returns {string}
    */
   getLeadingSpaces(text) {
-    return text.match(/^[ \t]*/)?.[0] ?? "";
+    return text.match(/^[ \t]+/)?.[0] ?? "";
   }
 
   /**
@@ -857,27 +740,23 @@ class Bce {
     if (
       cursor.startLine === cursor.endLine &&
       cursor.startOffset === cursor.endOffset
-    ) {
+    )
       return "";
-    }
-
     if (cursor.startLine === cursor.endLine) {
       return this.lines[cursor.startLine].row.substring(
         cursor.startOffset,
         cursor.endOffset,
       );
     }
-
     let result = this.lines[cursor.startLine].row.substring(cursor.startOffset);
-
     for (let i = cursor.startLine + 1; i < cursor.endLine; i++) {
       result += "\n" + this.lines[i].row;
     }
-
-    result +=
-      "\n" + this.lines[cursor.endLine].row.substring(0, cursor.endOffset);
-
-    return result;
+    return (
+      result +
+      "\n" +
+      this.lines[cursor.endLine].row.substring(0, cursor.endOffset)
+    );
   }
 
   /**
@@ -886,14 +765,12 @@ class Bce {
    * @returns {void}
    */
   deleteSelection(cursor) {
-    if (!cursor) return;
-
     if (
-      cursor.startLine === cursor.endLine &&
-      cursor.startOffset === cursor.endOffset
-    ) {
+      !cursor ||
+      (cursor.startLine === cursor.endLine &&
+        cursor.startOffset === cursor.endOffset)
+    )
       return;
-    }
 
     if (cursor.startLine === cursor.endLine) {
       const line = this.lines[cursor.startLine];
@@ -903,11 +780,9 @@ class Bce {
     } else {
       const first = this.lines[cursor.startLine];
       const last = this.lines[cursor.endLine];
-
       first.row =
         first.row.substring(0, cursor.startOffset) +
         last.row.substring(cursor.endOffset);
-
       this.lines.splice(
         cursor.startLine + 1,
         cursor.endLine - cursor.startLine,
@@ -934,9 +809,7 @@ class Bce {
   insertText(text) {
     const cursor = this.getCursor();
     if (!cursor) return;
-
     this.deleteSelection(cursor);
-
     const c = this.getCursor() || cursor;
     const parts = text.split("\n");
     const currentLine = this.lines[c.startLine];
@@ -953,21 +826,16 @@ class Bce {
       });
     } else {
       currentLine.row = before + parts[0];
-
       for (let i = 1; i < parts.length - 1; i++) {
         this.addLine(parts[i], c.startLine + i);
       }
-
-      /** @type {BceLine} */
       const lastLine = {
         id: this.newId(),
         row: parts[parts.length - 1] + after,
       };
       this.lines.splice(c.startLine + parts.length - 1, 0, lastLine);
-
       const finalLine = c.startLine + parts.length - 1;
       const finalOffset = parts[parts.length - 1].length;
-
       this.commitChange({
         startLine: finalLine,
         startOffset: finalOffset,
@@ -978,8 +846,8 @@ class Bce {
   }
 
   /* ================================================================
-   *  Действия по горячим клавишам
-   * ================================================================ */
+  Действия по горячим клавишам
+  ================================================================= */
 
   /**
    * Диспетчер действий по имени.
@@ -987,22 +855,16 @@ class Bce {
    * @returns {void}
    */
   doAction(action) {
-    switch (action) {
-      case "copy":
-        return this.actionCopy();
-      case "undo":
-        return this.undo();
-      case "redo":
-        return this.redo();
-      case "duplicateDown":
-        return this.actionDuplicate(1);
-      case "duplicateUp":
-        return this.actionDuplicate(-1);
-      case "moveDown":
-        return this.actionMove(1);
-      case "moveUp":
-        return this.actionMove(-1);
-    }
+    const actions = {
+      copy: () => this.actionCopy(),
+      undo: () => this.undo(),
+      redo: () => this.redo(),
+      duplicateDown: () => this.actionDuplicate(1),
+      duplicateUp: () => this.actionDuplicate(-1),
+      moveDown: () => this.actionMove(1),
+      moveUp: () => this.actionMove(-1),
+    };
+    actions[action]?.();
   }
 
   /**
@@ -1012,7 +874,6 @@ class Bce {
   actionCopy() {
     const cursor = this.getCursor();
     if (!cursor) return;
-
     const text = this.getSelectedText(cursor);
     if (text) navigator.clipboard.writeText(text).catch(() => {});
   }
@@ -1025,30 +886,16 @@ class Bce {
   actionDuplicate(dir) {
     const cursor = this.getCursor();
     if (!cursor) return;
-
     const idx = cursor.startLine;
-    const original = this.lines[idx];
-
-    /** @type {BceLine} */
-    const copy = { id: this.newId(), row: original.row };
-
-    if (dir > 0) {
-      this.lines.splice(idx + 1, 0, copy);
-      this.commitChange({
-        startLine: idx + 1,
-        startOffset: cursor.startOffset,
-        endLine: idx + 1,
-        endOffset: cursor.endOffset,
-      });
-    } else {
-      this.lines.splice(idx, 0, copy);
-      this.commitChange({
-        startLine: idx,
-        startOffset: cursor.startOffset,
-        endLine: idx,
-        endOffset: cursor.endOffset,
-      });
-    }
+    const copy = { id: this.newId(), row: this.lines[idx].row };
+    const newIdx = dir > 0 ? idx + 1 : idx;
+    this.lines.splice(newIdx, 0, copy);
+    this.commitChange({
+      startLine: newIdx,
+      startOffset: cursor.startOffset,
+      endLine: newIdx,
+      endOffset: cursor.endOffset,
+    });
   }
 
   /**
@@ -1059,15 +906,13 @@ class Bce {
   actionMove(dir) {
     const cursor = this.getCursor();
     if (!cursor) return;
-
     const idx = cursor.startLine;
     const target = idx + dir;
     if (target < 0 || target >= this.lines.length) return;
-
-    const tmp = this.lines[idx];
-    this.lines[idx] = this.lines[target];
-    this.lines[target] = tmp;
-
+    [this.lines[idx], this.lines[target]] = [
+      this.lines[target],
+      this.lines[idx],
+    ];
     this.commitChange({
       startLine: target,
       startOffset: cursor.startOffset,
@@ -1077,8 +922,8 @@ class Bce {
   }
 
   /* ================================================================
-   *  Emmet
-   * ================================================================ */
+  Emmet
+  ================================================================= */
 
   /**
    * Пытается развернуть Emmet-сокращение перед курсором.
@@ -1086,18 +931,15 @@ class Bce {
    */
   tryEmmet() {
     const cursor = this.getCursor();
-    if (!cursor) return false;
-
     if (
+      !cursor ||
       cursor.startLine !== cursor.endLine ||
       cursor.startOffset !== cursor.endOffset
     ) {
       return false;
     }
-
     const line = this.lines[cursor.startLine];
     const before = line.row.substring(0, cursor.startOffset);
-
     const abbr = Object.keys(this.emmet).find((k) => before.endsWith(k));
     if (!abbr) return false;
 
@@ -1105,12 +947,10 @@ class Bce {
     const cursorPos = expansion.indexOf("|");
     const clean = expansion.replace("|", "");
     const startReplace = cursor.startOffset - abbr.length;
-
     line.row =
       line.row.substring(0, startReplace) +
       clean +
       line.row.substring(cursor.startOffset);
-
     const newOffset =
       startReplace + (cursorPos >= 0 ? cursorPos : clean.length);
 
@@ -1120,13 +960,12 @@ class Bce {
       endLine: cursor.startLine,
       endOffset: newOffset,
     });
-
     return true;
   }
 
   /* ================================================================
-   *  Обработка клавиатуры
-   * ================================================================ */
+  Обработка клавиатуры
+  ================================================================= */
 
   /**
    * Проверяет событие клавиатуры на соответствие привязкам.
@@ -1140,16 +979,10 @@ class Bce {
         : !(e.ctrlKey || e.metaKey);
       const shiftOk = b.shift ? e.shiftKey : !e.shiftKey;
       const altOk = b.alt ? e.altKey : !e.altKey;
-
       const keyMatch = b.code
         ? e.code === b.code
-        : b.key
-          ? e.key.toLowerCase() === b.key.toLowerCase()
-          : false;
-
-      if (keyMatch && ctrlOk && shiftOk && altOk) {
-        return b.action;
-      }
+        : b.key?.toLowerCase() === e.key.toLowerCase();
+      if (keyMatch && ctrlOk && shiftOk && altOk) return b.action;
     }
     return null;
   }
@@ -1161,7 +994,6 @@ class Bce {
    */
   onKeyDown(e) {
     if (!e.shiftKey) this.resetSelectionAnchor();
-
     const action = this.matchBinding(e);
     if (action) {
       e.preventDefault();
@@ -1169,15 +1001,15 @@ class Bce {
       return;
     }
 
-    // --- Emmet-триггеры ---
-    if (this.options.enableEmmet && this.emmetTriggers.includes(e.key)) {
-      if (this.tryEmmet()) {
-        e.preventDefault();
-        return;
-      }
+    if (
+      this.options.enableEmmet &&
+      this.emmetTriggers.includes(e.key) &&
+      this.tryEmmet()
+    ) {
+      e.preventDefault();
+      return;
     }
 
-    // --- Tab ---
     if (e.key === "Tab" || e.key === "tab") {
       e.preventDefault();
       this.ignoreNextInput = true;
@@ -1185,159 +1017,145 @@ class Bce {
       return;
     }
 
-    // --- Backspace / Delete ---
     if (e.key === "Backspace" || e.key === "Delete") {
-      const cursor = this.getCursor();
-      if (!cursor) return;
-
-      const isSelection =
-        cursor.startLine !== cursor.endLine ||
-        cursor.startOffset !== cursor.endOffset;
-
-      if (isSelection && cursor.startOffset === 0) {
-        if (
-          cursor.startLine === cursor.endLine &&
-          cursor.endOffset === this.lines[cursor.startLine].row.length
-        ) {
-          e.preventDefault();
-          this.ignoreNextInput = true;
-
-          if (this.lines.length === 1) {
-            this.lines[0] = { id: this.newId(), row: "" };
-          } else {
-            this.lines[cursor.startLine].row = "";
-          }
-
-          this.commitChange({
-            startLine: cursor.startLine,
-            startOffset: 0,
-            endLine: cursor.startLine,
-            endOffset: 0,
-          });
-          return;
-        }
-
-        if (cursor.endOffset === 0 && cursor.endLine > cursor.startLine) {
-          e.preventDefault();
-          this.ignoreNextInput = true;
-
-          const deleteCount = cursor.endLine - cursor.startLine;
-
-          if (this.lines.length - deleteCount === 0) {
-            this.lines = [{ id: this.newId(), row: "" }];
-          } else {
-            this.lines.splice(cursor.startLine, deleteCount);
-          }
-
-          const targetLine = Math.min(cursor.startLine, this.lines.length - 1);
-
-          this.commitChange({
-            startLine: targetLine,
-            startOffset: 0,
-            endLine: targetLine,
-            endOffset: 0,
-          });
-          return;
-        }
-      }
-
-      if (isSelection) {
-        e.preventDefault();
-        this.ignoreNextInput = true;
-        this.deleteSelection(cursor);
-        return;
-      }
-
-      const currentLineIdx = cursor.startLine;
-      const currentLine = this.lines[currentLineIdx];
-
-      if (currentLine.row === "" && this.lines.length > 1) {
-        e.preventDefault();
-        this.ignoreNextInput = true;
-
-        this.lines.splice(currentLineIdx, 1);
-
-        let newLineIdx = currentLineIdx;
-        let newOffset = 0;
-
-        if (currentLineIdx > 0) {
-          newLineIdx = currentLineIdx - 1;
-          newOffset = this.lines[newLineIdx].row.length;
-        }
-
-        this.commitChange({
-          startLine: newLineIdx,
-          startOffset: newOffset,
-          endLine: newLineIdx,
-          endOffset: newOffset,
-        });
-        return;
-      }
-
-      if (e.key === "Backspace") {
-        if (cursor.startOffset === 0 && cursor.startLine > 0) {
-          e.preventDefault();
-          this.ignoreNextInput = true;
-
-          const prevLine = this.lines[cursor.startLine - 1];
-          const currLine = this.lines[cursor.startLine];
-          const prevLen = prevLine.row.length;
-
-          prevLine.row += currLine.row;
-          this.lines.splice(cursor.startLine, 1);
-
-          this.commitChange({
-            startLine: cursor.startLine - 1,
-            startOffset: prevLen,
-            endLine: cursor.startLine - 1,
-            endOffset: prevLen,
-          });
-          return;
-        }
-      } else if (e.key === "Delete") {
-        if (
-          cursor.startOffset === currentLine.row.length &&
-          cursor.startLine < this.lines.length - 1
-        ) {
-          e.preventDefault();
-          this.ignoreNextInput = true;
-
-          const currLine = this.lines[cursor.startLine];
-          const nextLine = this.lines[cursor.startLine + 1];
-          const currLen = currLine.row.length;
-
-          currLine.row += nextLine.row;
-          this.lines.splice(cursor.startLine + 1, 1);
-
-          this.commitChange({
-            startLine: cursor.startLine,
-            startOffset: currLen,
-            endLine: cursor.startLine,
-            endOffset: currLen,
-          });
-          return;
-        }
-      }
+      this._handleBackspaceDelete(e);
+      return;
     }
 
-    // --- Shift + стрелки: выделение ---
     if (e.shiftKey && !e.altKey && !(e.ctrlKey || e.metaKey)) {
       this._handleShiftArrows(e);
       return;
     }
 
-    // --- Shift + Ctrl/Cmd + стрелки: выделение по словам ---
     if (e.shiftKey && (e.ctrlKey || e.metaKey) && !e.altKey) {
       this._handleShiftCtrlArrows(e);
       return;
     }
 
-    // --- Enter ---
     if (e.key === "Enter") {
       e.preventDefault();
       this.ignoreNextInput = true;
       this.handleEnter();
+    }
+  }
+
+  /**
+   * Обработка Backspace / Delete.
+   * @param {KeyboardEvent} e
+   * @returns {void}
+   * @private
+   */
+  _handleBackspaceDelete(e) {
+    const cursor = this.getCursor();
+    if (!cursor) return;
+    const isSelection =
+      cursor.startLine !== cursor.endLine ||
+      cursor.startOffset !== cursor.endOffset;
+
+    if (isSelection && cursor.startOffset === 0) {
+      if (
+        cursor.startLine === cursor.endLine &&
+        cursor.endOffset === this.lines[cursor.startLine].row.length
+      ) {
+        e.preventDefault();
+        this.ignoreNextInput = true;
+        if (this.lines.length === 1) {
+          this.lines[0] = { id: this.newId(), row: "" };
+        } else {
+          this.lines[cursor.startLine].row = "";
+        }
+        this.commitChange({
+          startLine: cursor.startLine,
+          startOffset: 0,
+          endLine: cursor.startLine,
+          endOffset: 0,
+        });
+        return;
+      }
+      if (cursor.endOffset === 0 && cursor.endLine > cursor.startLine) {
+        e.preventDefault();
+        this.ignoreNextInput = true;
+        const deleteCount = cursor.endLine - cursor.startLine;
+        if (this.lines.length - deleteCount === 0) {
+          this.lines = [{ id: this.newId(), row: "" }];
+        } else {
+          this.lines.splice(cursor.startLine, deleteCount);
+        }
+        const targetLine = Math.min(cursor.startLine, this.lines.length - 1);
+        this.commitChange({
+          startLine: targetLine,
+          startOffset: 0,
+          endLine: targetLine,
+          endOffset: 0,
+        });
+        return;
+      }
+    }
+
+    if (isSelection) {
+      e.preventDefault();
+      this.ignoreNextInput = true;
+      this.deleteSelection(cursor);
       return;
+    }
+
+    const currentLineIdx = cursor.startLine;
+    const currentLine = this.lines[currentLineIdx];
+
+    if (currentLine.row === "" && this.lines.length > 1) {
+      e.preventDefault();
+      this.ignoreNextInput = true;
+      this.lines.splice(currentLineIdx, 1);
+      let newLineIdx = currentLineIdx;
+      let newOffset = 0;
+      if (currentLineIdx > 0) {
+        newLineIdx = currentLineIdx - 1;
+        newOffset = this.lines[newLineIdx].row.length;
+      }
+      this.commitChange({
+        startLine: newLineIdx,
+        startOffset: newOffset,
+        endLine: newLineIdx,
+        endOffset: newOffset,
+      });
+      return;
+    }
+
+    if (e.key === "Backspace") {
+      if (cursor.startOffset === 0 && cursor.startLine > 0) {
+        e.preventDefault();
+        this.ignoreNextInput = true;
+        const prevLine = this.lines[cursor.startLine - 1];
+        const currLine = this.lines[cursor.startLine];
+        const prevLen = prevLine.row.length;
+        prevLine.row += currLine.row;
+        this.lines.splice(cursor.startLine, 1);
+        this.commitChange({
+          startLine: cursor.startLine - 1,
+          startOffset: prevLen,
+          endLine: cursor.startLine - 1,
+          endOffset: prevLen,
+        });
+      }
+    } else if (e.key === "Delete") {
+      if (
+        cursor.startOffset === currentLine.row.length &&
+        cursor.startLine < this.lines.length - 1
+      ) {
+        e.preventDefault();
+        this.ignoreNextInput = true;
+        const currLine = this.lines[cursor.startLine];
+        const nextLine = this.lines[cursor.startLine + 1];
+        const currLen = currLine.row.length;
+        currLine.row += nextLine.row;
+        this.lines.splice(cursor.startLine + 1, 1);
+        this.commitChange({
+          startLine: cursor.startLine,
+          startOffset: currLen,
+          endLine: cursor.startLine,
+          endOffset: currLen,
+        });
+      }
     }
   }
 
@@ -1350,167 +1168,106 @@ class Bce {
   _handleShiftArrows(e) {
     const cursor = this.getCursor();
     if (!cursor) return;
-
     if (!this._selAnchor) {
-      this._selAnchor = {
-        line: cursor.startLine,
-        offset: cursor.startOffset,
-      };
+      this._selAnchor = { line: cursor.startLine, offset: cursor.startOffset };
     }
 
     const anchor = this._selAnchor;
     const moving = this._getMovingEnd(anchor);
 
-    if (e.key === "ArrowDown") {
+    const setCursorAndReturn = (startLine, startOffset, endLine, endOffset) => {
       e.preventDefault();
+      this.setCursor({
+        startLine: anchor.line,
+        startOffset: this._clampOffset(anchor.line, anchor.offset),
+        endLine,
+        endOffset,
+      });
+      this.updateActiveLine();
+    };
 
+    if (e.key === "ArrowDown") {
       if (moving.line >= this.lines.length - 1) {
         const lastLine = this.lines.length - 1;
-        this.setCursor({
-          startLine: anchor.line,
-          startOffset: this._clampOffset(anchor.line, anchor.offset),
-          endLine: lastLine,
-          endOffset: this.lines[lastLine].row.length,
-        });
-        this.updateActiveLine();
+        setCursorAndReturn(
+          anchor.line,
+          anchor.offset,
+          lastLine,
+          this.lines[lastLine].row.length,
+        );
         return;
       }
-
       const nextLine = moving.line + 1;
-      if (this._selDesiredCol === undefined) {
+      if (this._selDesiredCol === undefined)
         this._selDesiredCol = moving.offset;
-      }
-
       const targetOffset = Math.min(
         this._selDesiredCol,
         this.lines[nextLine].row.length,
       );
-
-      this.setCursor({
-        startLine: anchor.line,
-        startOffset: this._clampOffset(anchor.line, anchor.offset),
-        endLine: nextLine,
-        endOffset: targetOffset,
-      });
-      this.updateActiveLine();
+      setCursorAndReturn(anchor.line, anchor.offset, nextLine, targetOffset);
       return;
     }
 
     if (e.key === "ArrowUp") {
-      e.preventDefault();
-
       if (moving.line === 0) {
-        this.setCursor({
-          startLine: anchor.line,
-          startOffset: this._clampOffset(anchor.line, anchor.offset),
-          endLine: 0,
-          endOffset: 0,
-        });
-        this.updateActiveLine();
+        setCursorAndReturn(anchor.line, anchor.offset, 0, 0);
         return;
       }
-
       const prevLine = moving.line - 1;
-      if (this._selDesiredCol === undefined) {
+      if (this._selDesiredCol === undefined)
         this._selDesiredCol = moving.offset;
-      }
-
       const targetOffset = Math.min(
         this._selDesiredCol,
         this.lines[prevLine].row.length,
       );
-
-      this.setCursor({
-        startLine: anchor.line,
-        startOffset: this._clampOffset(anchor.line, anchor.offset),
-        endLine: prevLine,
-        endOffset: targetOffset,
-      });
-      this.updateActiveLine();
+      setCursorAndReturn(anchor.line, anchor.offset, prevLine, targetOffset);
       return;
     }
 
     if (e.key === "ArrowLeft") {
-      e.preventDefault();
-
-      const mLine = moving.line;
-      const mOffset = moving.offset;
-
+      const { line: mLine, offset: mOffset } = moving;
       if (mOffset > 0) {
-        this.setCursor({
-          startLine: anchor.line,
-          startOffset: this._clampOffset(anchor.line, anchor.offset),
-          endLine: mLine,
-          endOffset: mOffset - 1,
-        });
+        setCursorAndReturn(anchor.line, anchor.offset, mLine, mOffset - 1);
       } else if (mLine > 0) {
         const prevLine = mLine - 1;
-        this.setCursor({
-          startLine: anchor.line,
-          startOffset: this._clampOffset(anchor.line, anchor.offset),
-          endLine: prevLine,
-          endOffset: this.lines[prevLine].row.length,
-        });
+        setCursorAndReturn(
+          anchor.line,
+          anchor.offset,
+          prevLine,
+          this.lines[prevLine].row.length,
+        );
       }
-
       this._selDesiredCol = undefined;
-      this.updateActiveLine();
       return;
     }
 
     if (e.key === "ArrowRight") {
-      e.preventDefault();
-
-      const mLine = moving.line;
-      const mOffset = moving.offset;
+      const { line: mLine, offset: mOffset } = moving;
       const lineLen = this.lines[mLine].row.length;
-
       if (mOffset < lineLen) {
-        this.setCursor({
-          startLine: anchor.line,
-          startOffset: this._clampOffset(anchor.line, anchor.offset),
-          endLine: mLine,
-          endOffset: mOffset + 1,
-        });
+        setCursorAndReturn(anchor.line, anchor.offset, mLine, mOffset + 1);
       } else if (mLine < this.lines.length - 1) {
-        this.setCursor({
-          startLine: anchor.line,
-          startOffset: this._clampOffset(anchor.line, anchor.offset),
-          endLine: mLine + 1,
-          endOffset: 0,
-        });
+        setCursorAndReturn(anchor.line, anchor.offset, mLine + 1, 0);
       }
-
       this._selDesiredCol = undefined;
-      this.updateActiveLine();
       return;
     }
 
     if (e.key === "Home") {
-      e.preventDefault();
-      this.setCursor({
-        startLine: anchor.line,
-        startOffset: this._clampOffset(anchor.line, anchor.offset),
-        endLine: moving.line,
-        endOffset: 0,
-      });
+      setCursorAndReturn(anchor.line, anchor.offset, moving.line, 0);
       this._selDesiredCol = undefined;
-      this.updateActiveLine();
       return;
     }
 
     if (e.key === "End") {
-      e.preventDefault();
       const lineIdx = moving.line;
-      this.setCursor({
-        startLine: anchor.line,
-        startOffset: this._clampOffset(anchor.line, anchor.offset),
-        endLine: lineIdx,
-        endOffset: this.lines[lineIdx].row.length,
-      });
+      setCursorAndReturn(
+        anchor.line,
+        anchor.offset,
+        lineIdx,
+        this.lines[lineIdx].row.length,
+      );
       this._selDesiredCol = undefined;
-      this.updateActiveLine();
-      return;
     }
   }
 
@@ -1523,12 +1280,8 @@ class Bce {
   _handleShiftCtrlArrows(e) {
     const cursor = this.getCursor();
     if (!cursor) return;
-
     if (!this._selAnchor) {
-      this._selAnchor = {
-        line: cursor.startLine,
-        offset: cursor.startOffset,
-      };
+      this._selAnchor = { line: cursor.startLine, offset: cursor.startOffset };
     }
 
     const anchor = this._selAnchor;
@@ -1542,7 +1295,6 @@ class Bce {
      */
     const findWordBoundary = (text, pos, direction) => {
       const len = text.length;
-
       if (direction > 0) {
         let i = pos;
         while (i < len && /\s/.test(text[i])) i++;
@@ -1559,69 +1311,50 @@ class Bce {
     };
 
     const moving = this._getMovingEnd(anchor);
+    const setCursorAndReturn = (endLine, endOffset) => {
+      e.preventDefault();
+      this.setCursor({
+        startLine: anchor.line,
+        startOffset: this._clampOffset(anchor.line, anchor.offset),
+        endLine,
+        endOffset,
+      });
+      this.updateActiveLine();
+    };
 
     if (e.key === "ArrowLeft") {
-      e.preventDefault();
-
-      const mLine = moving.line;
-      const mOffset = moving.offset;
-
+      const { line: mLine, offset: mOffset } = moving;
       if (mOffset > 0) {
-        const newOffset = findWordBoundary(this.lines[mLine].row, mOffset, -1);
-        this.setCursor({
-          startLine: anchor.line,
-          startOffset: this._clampOffset(anchor.line, anchor.offset),
-          endLine: mLine,
-          endOffset: newOffset,
-        });
+        setCursorAndReturn(
+          mLine,
+          findWordBoundary(this.lines[mLine].row, mOffset, -1),
+        );
       } else if (mLine > 0) {
         const prevLine = mLine - 1;
-        this.setCursor({
-          startLine: anchor.line,
-          startOffset: this._clampOffset(anchor.line, anchor.offset),
-          endLine: prevLine,
-          endOffset: this.lines[prevLine].row.length,
-        });
+        setCursorAndReturn(prevLine, this.lines[prevLine].row.length);
       }
-
       this._selDesiredCol = undefined;
-      this.updateActiveLine();
       return;
     }
 
     if (e.key === "ArrowRight") {
-      e.preventDefault();
-
-      const mLine = moving.line;
-      const mOffset = moving.offset;
+      const { line: mLine, offset: mOffset } = moving;
       const lineLen = this.lines[mLine].row.length;
-
       if (mOffset < lineLen) {
-        const newOffset = findWordBoundary(this.lines[mLine].row, mOffset, 1);
-        this.setCursor({
-          startLine: anchor.line,
-          startOffset: this._clampOffset(anchor.line, anchor.offset),
-          endLine: mLine,
-          endOffset: newOffset,
-        });
+        setCursorAndReturn(
+          mLine,
+          findWordBoundary(this.lines[mLine].row, mOffset, 1),
+        );
       } else if (mLine < this.lines.length - 1) {
-        this.setCursor({
-          startLine: anchor.line,
-          startOffset: this._clampOffset(anchor.line, anchor.offset),
-          endLine: mLine + 1,
-          endOffset: 0,
-        });
+        setCursorAndReturn(mLine + 1, 0);
       }
-
       this._selDesiredCol = undefined;
-      this.updateActiveLine();
-      return;
     }
   }
 
   /* ================================================================
-   *  Tab / Enter
-   * ================================================================ */
+  Tab / Enter
+  ================================================================= */
 
   /**
    * Обрабатывает нажатие Tab (отступ) и Shift+Tab (сдвиг).
@@ -1631,19 +1364,14 @@ class Bce {
   handleTab(shift) {
     const cursor = this.getCursor();
     if (!cursor) return;
-
     const hasSelection = !(
       cursor.startLine === cursor.endLine &&
       cursor.startOffset === cursor.endOffset
     );
-
     const tabSize = this.options.tabSize;
 
     if (hasSelection) {
-      const start = cursor.startLine;
-      const end = cursor.endLine;
-
-      /** @type {number[]} */
+      const { startLine: start, endLine: end } = cursor;
       const deltas = [];
 
       if (shift) {
@@ -1667,42 +1395,30 @@ class Bce {
         }
       }
 
-      const newStartOffset = Math.max(0, cursor.startOffset + deltas[0]);
-      const newEndOffset = Math.max(
-        0,
-        cursor.endOffset + deltas[deltas.length - 1],
-      );
-
       this.commitChange({
         startLine: start,
-        startOffset: newStartOffset,
+        startOffset: Math.max(0, cursor.startOffset + deltas[0]),
         endLine: end,
-        endOffset: newEndOffset,
+        endOffset: Math.max(0, cursor.endOffset + deltas[deltas.length - 1]),
       });
     } else {
       const line = this.lines[cursor.startLine];
-
       if (shift) {
         const beforeCursor = line.row.substring(0, cursor.startOffset);
-
         let spaceCount = 0;
         for (let i = beforeCursor.length - 1; i >= 0; i--) {
           if (beforeCursor[i] === " ") spaceCount++;
           else break;
         }
-
         if (spaceCount === 0) return;
-
         const prevTabStop =
           Math.floor((cursor.startOffset - 1) / tabSize) * tabSize;
         const spacesToRemove = cursor.startOffset - prevTabStop;
         const removeCount = Math.min(spaceCount, spacesToRemove);
-
         if (removeCount > 0) {
           line.row =
             beforeCursor.substring(0, beforeCursor.length - removeCount) +
             line.row.substring(cursor.startOffset);
-
           this.commitChange({
             startLine: cursor.startLine,
             startOffset: cursor.startOffset - removeCount,
@@ -1714,12 +1430,10 @@ class Bce {
         const col = cursor.startOffset;
         const target = Math.ceil((col + 1) / tabSize) * tabSize;
         const add = " ".repeat(target - col);
-
         line.row =
           line.row.substring(0, cursor.startOffset) +
           add +
           line.row.substring(cursor.startOffset);
-
         this.commitChange({
           startLine: cursor.startLine,
           startOffset: cursor.startOffset + add.length,
@@ -1735,9 +1449,7 @@ class Bce {
    * @returns {void}
    */
   handleEnter() {
-    /** @type {BceCursor} */
     let cursor = this.getCursor();
-
     if (!cursor || cursor.startLine >= this.lines.length) {
       const lastIdx = Math.max(0, this.lines.length - 1);
       cursor = {
@@ -1762,10 +1474,8 @@ class Bce {
     const indent = this.getLeadingSpaces(before);
 
     if (cursor.startOffset === 0 && line.row !== "") {
-      /** @type {BceLine} */
       const newLine = { id: this.newId(), row: "" };
       this.lines.splice(cursor.startLine, 0, newLine);
-
       this.commitChange({
         startLine: cursor.startLine + 1,
         startOffset: 0,
@@ -1774,11 +1484,8 @@ class Bce {
       });
     } else {
       line.row = before;
-
-      /** @type {BceLine} */
       const newLine = { id: this.newId(), row: indent + after };
       this.lines.splice(cursor.startLine + 1, 0, newLine);
-
       this.commitChange({
         startLine: cursor.startLine + 1,
         startOffset: indent.length,
@@ -1789,8 +1496,8 @@ class Bce {
   }
 
   /* ================================================================
-   *  Ввод / Вставка
-   * ================================================================ */
+  Ввод / Вставка
+  ================================================================= */
 
   /**
    * Обрабатывает событие `input`: синхронизирует модель с DOM.
@@ -1798,75 +1505,22 @@ class Bce {
    * @returns {void}
    */
   onInput(_e) {
-    if (this.ignoreNextInput) {
-      this.ignoreNextInput = false;
-
-      const lineEls = this.content.querySelectorAll(".bce-line");
-
-      /** @type {BceLine[]} */
-      const newLines = [];
-
-      if (lineEls.length === this.lines.length) {
-        lineEls.forEach((el, idx) => {
-          newLines.push({
-            id: this.lines[idx].id,
-            row: el.textContent || "",
-          });
-        });
-      } else {
-        const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
-
-        lineEls.forEach((el) => {
-          const text = el.textContent || "";
-          const lineId = parseInt(
-            /** @type {HTMLElement} */ (el).dataset.lineId ?? "0",
-            10,
-          );
-
-          if (lineId && oldLinesMap.has(lineId)) {
-            newLines.push({ id: lineId, row: text });
-          } else {
-            newLines.push({ id: this.newId(), row: text });
-          }
-        });
-      }
-
-      if (newLines.length === 1 && newLines[0].row === "") {
-        newLines[0].id = this.newId();
-      }
-
-      this.lines = newLines;
-      this._fireOnChange();
-      return;
-    }
-
     const lineEls = this.content.querySelectorAll(".bce-line");
-
-    /** @type {BceLine[]} */
+    const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
     const newLines = [];
 
     if (lineEls.length === this.lines.length) {
       lineEls.forEach((el, idx) => {
-        newLines.push({
-          id: this.lines[idx].id,
-          row: el.textContent || "",
-        });
+        newLines.push({ id: this.lines[idx].id, row: el.textContent || "" });
       });
     } else {
-      const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
-
       lineEls.forEach((el) => {
-        const text = el.textContent || "";
-        const lineId = parseInt(
-          /** @type {HTMLElement} */ (el).dataset.lineId ?? "0",
-          10,
+        const lineId = parseInt(el.dataset.lineId ?? "0", 10);
+        newLines.push(
+          lineId && oldLinesMap.has(lineId)
+            ? { id: lineId, row: el.textContent || "" }
+            : { id: this.newId(), row: el.textContent || "" },
         );
-
-        if (lineId && oldLinesMap.has(lineId)) {
-          newLines.push({ id: lineId, row: text });
-        } else {
-          newLines.push({ id: this.newId(), row: text });
-        }
       });
     }
 
@@ -1876,13 +1530,17 @@ class Bce {
 
     this.lines = newLines;
 
+    if (this.ignoreNextInput) {
+      this.ignoreNextInput = false;
+      this._fireOnChange();
+      return;
+    }
+
     const cursor = this.getCursor();
     this.render();
     if (cursor) {
-      const cursorToRestore = cursor;
-      requestAnimationFrame(() => this.setCursor(cursorToRestore));
+      requestAnimationFrame(() => this.setCursor(cursor));
     }
-
     this.pushHistory();
     this._fireOnChange();
   }
@@ -1894,9 +1552,7 @@ class Bce {
    */
   onPaste(e) {
     e.preventDefault();
-
     const text = (e.clipboardData || window.clipboardData).getData("text");
-
     if (text) {
       this.ignoreNextInput = true;
       this.insertText(text.replace(/\r\n?/g, "\n"));
