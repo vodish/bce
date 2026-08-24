@@ -1903,5 +1903,3 @@ class Bce {
     }
   }
 }
-
-// window.Bce = Bce;
