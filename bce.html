@@ -195,8 +195,10 @@
 
     const editor = new Bce('#editor', {
         initialText: ``,
-        showLineNumbers: false
+        showLineNumbers: false,
     });
+    
+    editor.setShowLineNumbers
 
     function updateCursorMonitor() {
         const cursor = editor.getCursor();
