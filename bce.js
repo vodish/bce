@@ -4,7 +4,7 @@
 /**
  * @typedef {Object} BceLine
  * @property {number} id    — уникальный идентификатор строки
- * @property {string} row   — текстовое содержимое строки
+ * @property {string} val   — текстовое содержимое строки
  */
 
 /**
@@ -58,8 +58,8 @@
 class Bce {
   /**
    * Статическая проверка равенства двух массивов строк.
-   * @param {Array<{ id: number, row: string }>} arr1
-   * @param {Array<{ id: number, row: string }>} arr2
+   * @param {Array<{ id: number, val: string }>} arr1
+   * @param {Array<{ id: number, val: string }>} arr2
    * @returns {boolean}
    */
   static equalLines(arr1, arr2) {
@@ -169,7 +169,7 @@ class Bce {
    * @returns {string}
    */
   getText() {
-    return this.lines.map((l) => l.row).join("\n");
+    return this.lines.map((l) => l.val).join("\n");
   }
 
   /**
@@ -188,11 +188,11 @@ class Bce {
 
   /**
    * Устанавливает строки из массива объектов.
-   * @param {Array<{ id: number, row: string }>} lines
+   * @param {Array<{ id: number, val: string }>} lines
    * @returns {void}
    */
   setLines(lines = []) {
-    this.lines = lines.map(({ id, row }) => ({ id, row }));
+    this.lines = lines.map(({ id, val }) => ({ id, val }));
     this.lineIdCounter = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
     this.render();
     this.pushHistory();
@@ -323,12 +323,12 @@ class Bce {
 
   /**
    * Добавляет строку в модель.
-   * @param {string} text     — содержимое строки
+   * @param {string} val      — содержимое строки
    * @param {number} [index]  — позиция вставки (по умолчанию — конец)
    * @returns {BceLine}
    */
-  addLine(text, index = this.lines.length) {
-    const line = { id: this.newId(), row: text };
+  addLine(val, index = this.lines.length) {
+    const line = { id: this.newId(), val };
     this.lines.splice(index, 0, line);
     return line;
   }
@@ -343,7 +343,7 @@ class Bce {
    */
   render() {
     if (this.lines.length === 0) {
-      this.lines.push({ id: this.newId(), row: "" });
+      this.lines.push({ id: this.newId(), val: "" });
     }
     const cursor = this.getCursor();
     this.content.innerHTML = "";
@@ -359,7 +359,7 @@ class Bce {
       div.className = "bce-line";
       div.dataset.lineId = String(line.id);
       div.dataset.lineIndex = String(idx);
-      div.innerHTML = line.row === "" ? "<br>" : this.highlight(line.row);
+      div.innerHTML = line.val === "" ? "<br>" : this.highlight(line.val);
       this.content.appendChild(div);
     });
 
@@ -399,7 +399,7 @@ class Bce {
    */
   _clampOffset(lineIdx, off) {
     const line = this.lines[lineIdx];
-    return line ? Math.max(0, Math.min(off, line.row.length)) : 0;
+    return line ? Math.max(0, Math.min(off, line.val.length)) : 0;
   }
 
   /**
@@ -423,12 +423,12 @@ class Bce {
   /**
    * Экранирует текст и оборачивает HTML-теги / атрибуты / комментарии
    * в `<span>` с соответствующими CSS-классами.
-   * @param {string} text — сырой текст строки
+   * @param {string} val — сырой текст строки
    * @returns {string} — HTML-строка
    */
-  highlight(text) {
-    if (!text) return "";
-    let safe = text
+  highlight(val) {
+    if (!val) return "";
+    let safe = val
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;");
@@ -648,7 +648,7 @@ class Bce {
   pushHistory() {
     this.history = this.history.slice(0, this.historyIndex + 1);
     this.history.push({
-      lines: this.lines.map((l) => ({ id: l.id, row: l.row })),
+      lines: this.lines.map((l) => ({ id: l.id, val: l.val })),
       cursor: this.getCursor(),
     });
     if (this.history.length > this.maxHistory) this.history.shift();
@@ -661,7 +661,7 @@ class Bce {
    * @returns {void}
    */
   restoreSnapshot(snap) {
-    this.lines = snap.lines.map((l) => ({ id: l.id, row: l.row }));
+    this.lines = snap.lines.map((l) => ({ id: l.id, val: l.val }));
     this.render();
     if (snap.cursor) {
       requestAnimationFrame(() => this.setCursor(snap.cursor));
@@ -722,11 +722,11 @@ class Bce {
 
   /**
    * Возвращает ведущие пробельные символы строки.
-   * @param {string} text
+   * @param {string} val
    * @returns {string}
    */
-  getLeadingSpaces(text) {
-    return text.match(/^[ \t]+/)?.[0] ?? "";
+  getLeadingSpaces(val) {
+    return val.match(/^[ \t]+/)?.[0] ?? "";
   }
 
   /**
@@ -741,19 +741,19 @@ class Bce {
     )
       return "";
     if (cursor.startLine === cursor.endLine) {
-      return this.lines[cursor.startLine].row.substring(
+      return this.lines[cursor.startLine].val.substring(
         cursor.startOffset,
         cursor.endOffset,
       );
     }
-    let result = this.lines[cursor.startLine].row.substring(cursor.startOffset);
+    let result = this.lines[cursor.startLine].val.substring(cursor.startOffset);
     for (let i = cursor.startLine + 1; i < cursor.endLine; i++) {
-      result += "\n" + this.lines[i].row;
+      result += "\n" + this.lines[i].val;
     }
     return (
       result +
       "\n" +
-      this.lines[cursor.endLine].row.substring(0, cursor.endOffset)
+      this.lines[cursor.endLine].val.substring(0, cursor.endOffset)
     );
   }
 
@@ -772,22 +772,22 @@ class Bce {
 
     if (cursor.startLine === cursor.endLine) {
       const line = this.lines[cursor.startLine];
-      line.row =
-        line.row.substring(0, cursor.startOffset) +
-        line.row.substring(cursor.endOffset);
+      line.val =
+        line.val.substring(0, cursor.startOffset) +
+        line.val.substring(cursor.endOffset);
     } else {
       const first = this.lines[cursor.startLine];
       const last = this.lines[cursor.endLine];
-      first.row =
-        first.row.substring(0, cursor.startOffset) +
-        last.row.substring(cursor.endOffset);
+      first.val =
+        first.val.substring(0, cursor.startOffset) +
+        last.val.substring(cursor.endOffset);
       this.lines.splice(
         cursor.startLine + 1,
         cursor.endLine - cursor.startLine,
       );
     }
 
-    if (this.lines.length === 1 && this.lines[0].row === "") {
+    if (this.lines.length === 1 && this.lines[0].val === "") {
       this.lines[0].id = this.newId();
     }
 
@@ -811,11 +811,11 @@ class Bce {
     const c = this.getCursor() || cursor;
     const parts = text.split("\n");
     const currentLine = this.lines[c.startLine];
-    const before = currentLine.row.substring(0, c.startOffset);
-    const after = currentLine.row.substring(c.endOffset);
+    const before = currentLine.val.substring(0, c.startOffset);
+    const after = currentLine.val.substring(c.endOffset);
 
     if (parts.length === 1) {
-      currentLine.row = before + parts[0] + after;
+      currentLine.val = before + parts[0] + after;
       this.commitChange({
         startLine: c.startLine,
         startOffset: before.length + parts[0].length,
@@ -823,13 +823,13 @@ class Bce {
         endOffset: before.length + parts[0].length,
       });
     } else {
-      currentLine.row = before + parts[0];
+      currentLine.val = before + parts[0];
       for (let i = 1; i < parts.length - 1; i++) {
         this.addLine(parts[i], c.startLine + i);
       }
       const lastLine = {
         id: this.newId(),
-        row: parts[parts.length - 1] + after,
+        val: parts[parts.length - 1] + after,
       };
       this.lines.splice(c.startLine + parts.length - 1, 0, lastLine);
       const finalLine = c.startLine + parts.length - 1;
@@ -885,7 +885,7 @@ class Bce {
     const cursor = this.getCursor();
     if (!cursor) return;
     const idx = cursor.startLine;
-    const copy = { id: this.newId(), row: this.lines[idx].row };
+    const copy = { id: this.newId(), val: this.lines[idx].val };
     const newIdx = dir > 0 ? idx + 1 : idx;
     this.lines.splice(newIdx, 0, copy);
     this.commitChange({
@@ -937,7 +937,7 @@ class Bce {
       return false;
     }
     const line = this.lines[cursor.startLine];
-    const before = line.row.substring(0, cursor.startOffset);
+    const before = line.val.substring(0, cursor.startOffset);
     const abbr = Object.keys(this.emmet).find((k) => before.endsWith(k));
     if (!abbr) return false;
 
@@ -945,10 +945,10 @@ class Bce {
     const cursorPos = expansion.indexOf("|");
     const clean = expansion.replace("|", "");
     const startReplace = cursor.startOffset - abbr.length;
-    line.row =
-      line.row.substring(0, startReplace) +
+    line.val =
+      line.val.substring(0, startReplace) +
       clean +
-      line.row.substring(cursor.startOffset);
+      line.val.substring(cursor.startOffset);
     const newOffset =
       startReplace + (cursorPos >= 0 ? cursorPos : clean.length);
 
@@ -1053,14 +1053,14 @@ class Bce {
     if (isSelection && cursor.startOffset === 0) {
       if (
         cursor.startLine === cursor.endLine &&
-        cursor.endOffset === this.lines[cursor.startLine].row.length
+        cursor.endOffset === this.lines[cursor.startLine].val.length
       ) {
         e.preventDefault();
         this.ignoreNextInput = true;
         if (this.lines.length === 1) {
-          this.lines[0] = { id: this.newId(), row: "" };
+          this.lines[0] = { id: this.newId(), val: "" };
         } else {
-          this.lines[cursor.startLine].row = "";
+          this.lines[cursor.startLine].val = "";
         }
         this.commitChange({
           startLine: cursor.startLine,
@@ -1075,7 +1075,7 @@ class Bce {
         this.ignoreNextInput = true;
         const deleteCount = cursor.endLine - cursor.startLine;
         if (this.lines.length - deleteCount === 0) {
-          this.lines = [{ id: this.newId(), row: "" }];
+          this.lines = [{ id: this.newId(), val: "" }];
         } else {
           this.lines.splice(cursor.startLine, deleteCount);
         }
@@ -1100,7 +1100,7 @@ class Bce {
     const currentLineIdx = cursor.startLine;
     const currentLine = this.lines[currentLineIdx];
 
-    if (currentLine.row === "" && this.lines.length > 1) {
+    if (currentLine.val === "" && this.lines.length > 1) {
       e.preventDefault();
       this.ignoreNextInput = true;
       this.lines.splice(currentLineIdx, 1);
@@ -1108,7 +1108,7 @@ class Bce {
       let newOffset = 0;
       if (currentLineIdx > 0) {
         newLineIdx = currentLineIdx - 1;
-        newOffset = this.lines[newLineIdx].row.length;
+        newOffset = this.lines[newLineIdx].val.length;
       }
       this.commitChange({
         startLine: newLineIdx,
@@ -1125,8 +1125,8 @@ class Bce {
         this.ignoreNextInput = true;
         const prevLine = this.lines[cursor.startLine - 1];
         const currLine = this.lines[cursor.startLine];
-        const prevLen = prevLine.row.length;
-        prevLine.row += currLine.row;
+        const prevLen = prevLine.val.length;
+        prevLine.val += currLine.val;
         this.lines.splice(cursor.startLine, 1);
         this.commitChange({
           startLine: cursor.startLine - 1,
@@ -1137,15 +1137,15 @@ class Bce {
       }
     } else if (e.key === "Delete") {
       if (
-        cursor.startOffset === currentLine.row.length &&
+        cursor.startOffset === currentLine.val.length &&
         cursor.startLine < this.lines.length - 1
       ) {
         e.preventDefault();
         this.ignoreNextInput = true;
         const currLine = this.lines[cursor.startLine];
         const nextLine = this.lines[cursor.startLine + 1];
-        const currLen = currLine.row.length;
-        currLine.row += nextLine.row;
+        const currLen = currLine.val.length;
+        currLine.val += nextLine.val;
         this.lines.splice(cursor.startLine + 1, 1);
         this.commitChange({
           startLine: cursor.startLine,
@@ -1191,7 +1191,7 @@ class Bce {
           anchor.line,
           anchor.offset,
           lastLine,
-          this.lines[lastLine].row.length,
+          this.lines[lastLine].val.length,
         );
         return;
       }
@@ -1200,7 +1200,7 @@ class Bce {
         this._selDesiredCol = moving.offset;
       const targetOffset = Math.min(
         this._selDesiredCol,
-        this.lines[nextLine].row.length,
+        this.lines[nextLine].val.length,
       );
       setCursorAndReturn(anchor.line, anchor.offset, nextLine, targetOffset);
       return;
@@ -1216,7 +1216,7 @@ class Bce {
         this._selDesiredCol = moving.offset;
       const targetOffset = Math.min(
         this._selDesiredCol,
-        this.lines[prevLine].row.length,
+        this.lines[prevLine].val.length,
       );
       setCursorAndReturn(anchor.line, anchor.offset, prevLine, targetOffset);
       return;
@@ -1232,7 +1232,7 @@ class Bce {
           anchor.line,
           anchor.offset,
           prevLine,
-          this.lines[prevLine].row.length,
+          this.lines[prevLine].val.length,
         );
       }
       this._selDesiredCol = undefined;
@@ -1241,7 +1241,7 @@ class Bce {
 
     if (e.key === "ArrowRight") {
       const { line: mLine, offset: mOffset } = moving;
-      const lineLen = this.lines[mLine].row.length;
+      const lineLen = this.lines[mLine].val.length;
       if (mOffset < lineLen) {
         setCursorAndReturn(anchor.line, anchor.offset, mLine, mOffset + 1);
       } else if (mLine < this.lines.length - 1) {
@@ -1263,7 +1263,7 @@ class Bce {
         anchor.line,
         anchor.offset,
         lineIdx,
-        this.lines[lineIdx].row.length,
+        this.lines[lineIdx].val.length,
       );
       this._selDesiredCol = undefined;
     }
@@ -1286,24 +1286,24 @@ class Bce {
 
     /**
      * Ищет границу слова в тексте.
-     * @param {string} text      — текст строки
+     * @param {string} val       — текст строки
      * @param {number} pos       — текущая позиция
      * @param {number} direction — `1` (вперёд) или `-1` (назад)
      * @returns {number}
      */
-    const findWordBoundary = (text, pos, direction) => {
-      const len = text.length;
+    const findWordBoundary = (val, pos, direction) => {
+      const len = val.length;
       if (direction > 0) {
         let i = pos;
-        while (i < len && /\s/.test(text[i])) i++;
-        while (i < len && !/\s/.test(text[i])) i++;
+        while (i < len && /\s/.test(val[i])) i++;
+        while (i < len && !/\s/.test(val[i])) i++;
         return i;
       } else {
         let i = pos;
         if (i > 0) i--;
-        while (i > 0 && /\s/.test(text[i])) i--;
-        while (i > 0 && !/\s/.test(text[i])) i--;
-        if (i === 0 && !/\s/.test(text[0])) return 0;
+        while (i > 0 && /\s/.test(val[i])) i--;
+        while (i > 0 && !/\s/.test(val[i])) i--;
+        if (i === 0 && !/\s/.test(val[0])) return 0;
         return i > 0 ? i + 1 : 0;
       }
     };
@@ -1325,11 +1325,11 @@ class Bce {
       if (mOffset > 0) {
         setCursorAndReturn(
           mLine,
-          findWordBoundary(this.lines[mLine].row, mOffset, -1),
+          findWordBoundary(this.lines[mLine].val, mOffset, -1),
         );
       } else if (mLine > 0) {
         const prevLine = mLine - 1;
-        setCursorAndReturn(prevLine, this.lines[prevLine].row.length);
+        setCursorAndReturn(prevLine, this.lines[prevLine].val.length);
       }
       this._selDesiredCol = undefined;
       return;
@@ -1337,11 +1337,11 @@ class Bce {
 
     if (e.key === "ArrowRight") {
       const { line: mLine, offset: mOffset } = moving;
-      const lineLen = this.lines[mLine].row.length;
+      const lineLen = this.lines[mLine].val.length;
       if (mOffset < lineLen) {
         setCursorAndReturn(
           mLine,
-          findWordBoundary(this.lines[mLine].row, mOffset, 1),
+          findWordBoundary(this.lines[mLine].val, mOffset, 1),
         );
       } else if (mLine < this.lines.length - 1) {
         setCursorAndReturn(mLine + 1, 0);
@@ -1374,21 +1374,21 @@ class Bce {
 
       if (shift) {
         for (let i = start; i <= end; i++) {
-          const leading = this.getLeadingSpaces(this.lines[i].row);
+          const leading = this.getLeadingSpaces(this.lines[i].val);
           const removeCount =
             leading.length > 0
               ? Math.min(leading.length, leading.length % tabSize || tabSize)
               : 0;
-          this.lines[i].row = this.lines[i].row.substring(removeCount);
+          this.lines[i].val = this.lines[i].val.substring(removeCount);
           deltas.push(-removeCount);
         }
       } else {
         for (let i = start; i <= end; i++) {
-          const leading = this.getLeadingSpaces(this.lines[i].row);
+          const leading = this.getLeadingSpaces(this.lines[i].val);
           const currentLen = leading.length;
           const target = Math.ceil((currentLen + 1) / tabSize) * tabSize;
           const add = " ".repeat(target - currentLen);
-          this.lines[i].row = add + this.lines[i].row;
+          this.lines[i].val = add + this.lines[i].val;
           deltas.push(add.length);
         }
       }
@@ -1402,7 +1402,7 @@ class Bce {
     } else {
       const line = this.lines[cursor.startLine];
       if (shift) {
-        const beforeCursor = line.row.substring(0, cursor.startOffset);
+        const beforeCursor = line.val.substring(0, cursor.startOffset);
         let spaceCount = 0;
         for (let i = beforeCursor.length - 1; i >= 0; i--) {
           if (beforeCursor[i] === " ") spaceCount++;
@@ -1414,9 +1414,9 @@ class Bce {
         const spacesToRemove = cursor.startOffset - prevTabStop;
         const removeCount = Math.min(spaceCount, spacesToRemove);
         if (removeCount > 0) {
-          line.row =
+          line.val =
             beforeCursor.substring(0, beforeCursor.length - removeCount) +
-            line.row.substring(cursor.startOffset);
+            line.val.substring(cursor.startOffset);
           this.commitChange({
             startLine: cursor.startLine,
             startOffset: cursor.startOffset - removeCount,
@@ -1428,10 +1428,10 @@ class Bce {
         const col = cursor.startOffset;
         const target = Math.ceil((col + 1) / tabSize) * tabSize;
         const add = " ".repeat(target - col);
-        line.row =
-          line.row.substring(0, cursor.startOffset) +
+        line.val =
+          line.val.substring(0, cursor.startOffset) +
           add +
-          line.row.substring(cursor.startOffset);
+          line.val.substring(cursor.startOffset);
         this.commitChange({
           startLine: cursor.startLine,
           startOffset: cursor.startOffset + add.length,
@@ -1452,9 +1452,9 @@ class Bce {
       const lastIdx = Math.max(0, this.lines.length - 1);
       cursor = {
         startLine: lastIdx,
-        startOffset: lastIdx >= 0 ? this.lines[lastIdx].row.length : 0,
+        startOffset: lastIdx >= 0 ? this.lines[lastIdx].val.length : 0,
         endLine: lastIdx,
-        endOffset: lastIdx >= 0 ? this.lines[lastIdx].row.length : 0,
+        endOffset: lastIdx >= 0 ? this.lines[lastIdx].val.length : 0,
       };
     }
 
@@ -1467,12 +1467,12 @@ class Bce {
     }
 
     const line = this.lines[cursor.startLine];
-    const before = line.row.substring(0, cursor.startOffset);
-    const after = line.row.substring(cursor.startOffset);
+    const before = line.val.substring(0, cursor.startOffset);
+    const after = line.val.substring(cursor.startOffset);
     const indent = this.getLeadingSpaces(before);
 
-    if (cursor.startOffset === 0 && line.row !== "") {
-      const newLine = { id: this.newId(), row: "" };
+    if (cursor.startOffset === 0 && line.val !== "") {
+      const newLine = { id: this.newId(), val: "" };
       this.lines.splice(cursor.startLine, 0, newLine);
       this.commitChange({
         startLine: cursor.startLine + 1,
@@ -1481,8 +1481,8 @@ class Bce {
         endOffset: 0,
       });
     } else {
-      line.row = before;
-      const newLine = { id: this.newId(), row: indent + after };
+      line.val = before;
+      const newLine = { id: this.newId(), val: indent + after };
       this.lines.splice(cursor.startLine + 1, 0, newLine);
       this.commitChange({
         startLine: cursor.startLine + 1,
@@ -1509,20 +1509,20 @@ class Bce {
 
     if (lineEls.length === this.lines.length) {
       lineEls.forEach((el, idx) => {
-        newLines.push({ id: this.lines[idx].id, row: el.textContent || "" });
+        newLines.push({ id: this.lines[idx].id, val: el.textContent || "" });
       });
     } else {
       lineEls.forEach((el) => {
         const lineId = parseInt(el.dataset.lineId ?? "0", 10);
         newLines.push(
           lineId && oldLinesMap.has(lineId)
-            ? { id: lineId, row: el.textContent || "" }
-            : { id: this.newId(), row: el.textContent || "" },
+            ? { id: lineId, val: el.textContent || "" }
+            : { id: this.newId(), val: el.textContent || "" },
         );
       });
     }
 
-    if (newLines.length === 1 && newLines[0].row === "") {
+    if (newLines.length === 1 && newLines[0].val === "") {
       newLines[0].id = this.newId();
     }
 
