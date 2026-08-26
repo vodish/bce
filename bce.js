@@ -1,7 +1,5 @@
 // @ts-nocheck
 "use strict";
-// @ts-nocheck
-"use strict";
 
 /**
  * @typedef {Object} BceLine
