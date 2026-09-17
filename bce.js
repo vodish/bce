@@ -258,6 +258,17 @@ class Bce {
     this.options.enableEmmet = enable;
   }
 
+  /**
+   * Устанавливает счетчик id в ручную
+   * @param {number} num
+   * @returns {void}
+   */
+  setLineIdCounter(num) {
+    if (num > this.lineIdCounter) {
+      this.lineIdCounter = num;
+    }
+  }
+
   /* ================================================================
   Привязка событий
   ================================================================= */
