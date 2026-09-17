@@ -57,25 +57,27 @@
 
 class Bce {
   /**
-   * Статическая проверка равенства двух массивов строк.
+   * Статическая проверка НЕ-равенства двух массивов строго заданной структуры.
    * @param {Array<{ id: number, val: string }>} arr1
    * @param {Array<{ id: number, val: string }>} arr2
    * @returns {boolean}
    */
-  static equalLines(arr1, arr2) {
-    if (arr1.length !== arr2.length) return false;
+  static Ne(arr1, arr2) {
+    if (arr1.length !== arr2.length) return true;
+
     for (let i = 0; i < arr1.length; i++) {
-      const obj1 = arr1[i],
-        obj2 = arr2[i];
-      if (obj1 === obj2) continue;
-      if (!obj1 || !obj2) return false;
-      const keys = Object.keys(obj1);
-      if (keys.length !== Object.keys(obj2).length) return false;
-      for (const key of keys) {
-        if (obj1[key] !== obj2[key]) return false;
+      const a = arr1[i],
+        b = arr2[i];
+
+      // Если это один и тот же объект в памяти — пропускаем
+      if (a === b) continue;
+
+      // Если один из них null/undefined или не совпадают значения полей
+      if (!a || !b || a.id !== b.id || a.val !== b.val) {
+        return true;
       }
     }
-    return true;
+    return false;
   }
 
   /**
@@ -204,8 +206,8 @@ class Bce {
    * @param {BceLine[]} lines — массив строк для сравнения
    * @returns {boolean}
    */
-  checkLines(lines = []) {
-    return Bce.equalLines(this.lines, lines);
+  areNotEqual(lines = []) {
+    return Bce.Ne(this.lines, lines);
   }
 
   /* ================================================================
