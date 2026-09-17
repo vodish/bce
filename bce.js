@@ -206,7 +206,7 @@ class Bce {
    * @param {BceLine[]} lines — массив строк для сравнения
    * @returns {boolean}
    */
-  areNotEqual(lines = []) {
+  notEqual(lines = []) {
     return Bce.Ne(this.lines, lines);
   }
 
