@@ -193,9 +193,10 @@ class Bce {
    * @param {Array<{ id: number, val: string }>} lines
    * @returns {void}
    */
-  setLines(lines = []) {
+ setLines(lines = []) {
     this.lines = lines.map(({ id, val }) => ({ id, val }));
-    this.sequencer = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
+    let maxId = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
+    this.sequencer = Math.max(this.sequencer, maxId);
     this.render();
     this.pushHistory();
     this._fireOnChange();
