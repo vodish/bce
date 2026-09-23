@@ -193,7 +193,7 @@ class Bce {
    * @param {Array<{ id: number, val: string }>} lines
    * @returns {void}
    */
- setLines(lines = []) {
+  setLines(lines = []) {
     this.lines = lines.map(({ id, val }) => ({ id, val }));
     let maxId = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
     this.sequencer = Math.max(this.sequencer, maxId);
@@ -216,7 +216,7 @@ class Bce {
    * @returns {boolean}
    */
   checkEmpty() {
-    return this.lines.length == 1 && this.lines[0].val == '';
+    return this.lines.length == 1 && this.lines[0].val == "";
   }
 
   /**
@@ -1050,12 +1050,29 @@ class Bce {
       return;
     }
 
-    if (e.shiftKey && !e.altKey && !(e.ctrlKey || e.metaKey)) {
+    if (
+      e.shiftKey &&
+      !e.altKey &&
+      !(e.ctrlKey || e.metaKey) &&
+      [
+        "ArrowDown",
+        "ArrowUp",
+        "ArrowLeft",
+        "ArrowRight",
+        "Home",
+        "End",
+      ].includes(e.key)
+    ) {
       this._handleShiftArrows(e);
       return;
     }
 
-    if (e.shiftKey && (e.ctrlKey || e.metaKey) && !e.altKey) {
+    if (
+      e.shiftKey &&
+      (e.ctrlKey || e.metaKey) &&
+      !e.altKey &&
+      ["ArrowLeft", "ArrowRight"].includes(e.key)
+    ) {
       this._handleShiftCtrlArrows(e);
       return;
     }
