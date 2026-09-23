@@ -211,6 +211,22 @@ class Bce {
     return Bce.Ne(this.lines, lines);
   }
 
+  /**
+   * Проверяет пустой ли редактор
+   * @returns {boolean}
+   */
+  checkEmpty() {
+    return this.lines.length == 1 && this.lines[0].val == '';
+  }
+
+  /**
+   * Возвращает пустой массив для одной пустой строки
+   * @returns {BceLine[]}
+   */
+  getLines() {
+    return this.checkEmpty() ? [] : this.lines;
+  }
+
   /* ================================================================
   Построение DOM
   ================================================================= */
