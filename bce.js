@@ -101,7 +101,7 @@ class Bce {
     };
 
     /** @type {number} */
-    this.sequencer = 0;
+    this.seq = 0;
     /** @type {Record[]} */
     this.lines = [];
     /** @type {BceHistorySnapshot[]} */
@@ -181,7 +181,7 @@ class Bce {
    */
   setText(text) {
     this.lines = [];
-    this.sequencer = 0;
+    this.seq = 0;
     text.split("\n").forEach((p) => this.addLine(p));
     this.render();
     this.pushHistory();
@@ -196,7 +196,7 @@ class Bce {
   setLines(lines = []) {
     this.lines = lines.map(({ id, val }) => ({ id, val }));
     let maxId = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
-    this.sequencer = Math.max(this.sequencer, maxId);
+    this.seq = Math.max(this.seq, maxId);
     this.render();
     this.pushHistory();
     this._fireOnChange();
@@ -283,8 +283,8 @@ class Bce {
    * @returns {void}
    */
   setSequencer(num) {
-    if (num > this.sequencer) {
-      this.sequencer = num;
+    if (num > this.seq) {
+      this.seq = num;
     }
   }
 
@@ -339,7 +339,7 @@ class Bce {
    * @returns {number}
    */
   newId() {
-    return ++this.sequencer;
+    return ++this.seq;
   }
 
   /**
