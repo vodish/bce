@@ -2,7 +2,7 @@
 "use strict";
 
 /**
- * @typedef {Object} BceLine
+ * @typedef {Object} Record
  * @property {number} id    — уникальный идентификатор строки
  * @property {string} val   — текстовое содержимое строки
  */
@@ -17,7 +17,7 @@
 
 /**
  * @typedef {Object} BceHistorySnapshot
- * @property {BceLine[]}      lines  — снимок всех строк
+ * @property {Record[]}       lines  — снимок всех строк
  * @property {BceCursor|null} cursor — снимок позиции курсора
  */
 
@@ -102,7 +102,7 @@ class Bce {
 
     /** @type {number} */
     this.sequencer = 0;
-    /** @type {BceLine[]} */
+    /** @type {Record[]} */
     this.lines = [];
     /** @type {BceHistorySnapshot[]} */
     this.history = [];
@@ -204,7 +204,7 @@ class Bce {
 
   /**
    * Сравнивает переданный массив строк с текущим содержимым редактора.
-   * @param {BceLine[]} lines — массив строк для сравнения
+   * @param {Record[]} lines — массив строк для сравнения
    * @returns {boolean}
    */
   notEqual(lines = []) {
@@ -221,7 +221,7 @@ class Bce {
 
   /**
    * Возвращает пустой массив для одной пустой строки
-   * @returns {BceLine[]}
+   * @returns {Record[]}
    */
   getLines() {
     return this.checkEmpty() ? [] : this.lines;
@@ -355,7 +355,7 @@ class Bce {
    * Добавляет строку в модель.
    * @param {string} val      — содержимое строки
    * @param {number} [index]  — позиция вставки (по умолчанию — конец)
-   * @returns {BceLine}
+   * @returns {Record}
    */
   addLine(val, index = this.lines.length) {
     const line = { id: this.newId(), val };
