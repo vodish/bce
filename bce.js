@@ -1409,12 +1409,44 @@ class Bce {
   handleTab(shift) {
     const cursor = this.getCursor();
     if (!cursor) return;
+
     const hasSelection = !(
       cursor.startLine === cursor.endLine &&
       cursor.startOffset === cursor.endOffset
     );
     const tabSize = this.options.tabSize;
 
+    // 1. Модификация: Если выделен текст только на ОДНОЙ строке (при обычном Tab без Shift)
+    if (hasSelection && cursor.startLine === cursor.endLine && !shift) {
+      const line = this.lines[cursor.startLine];
+
+      // Вырезаем выделенный кусок прямо в модели (без вызова commitChange)
+      line.val =
+        line.val.substring(0, cursor.startOffset) +
+        line.val.substring(cursor.endOffset);
+
+      // Теперь курсор логически "схлопнулся" в точку startOffset
+      const col = cursor.startOffset;
+      const target = Math.ceil((col + 1) / tabSize) * tabSize;
+      const add = " ".repeat(target - col);
+
+      // Вставляем пробелы в ту же позицию
+      line.val =
+        line.val.substring(0, cursor.startOffset) +
+        add +
+        line.val.substring(cursor.startOffset);
+
+      // Делаем ОДИН коммит для всей операции
+      this.commitChange({
+        startLine: cursor.startLine,
+        startOffset: cursor.startOffset + add.length,
+        endLine: cursor.startLine,
+        endOffset: cursor.startOffset + add.length,
+      });
+      return;
+    }
+
+    // ОСТАЛЬНАЯ СТАНДАРТНАЯ ЛОГИКА РЕДАКТОРА (Многострочное выделение или Shift+Tab)
     if (hasSelection) {
       const { startLine: start, endLine: end } = cursor;
       const deltas = [];
