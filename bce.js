@@ -17,7 +17,7 @@
 
 /**
  * @typedef {Object} BceHistorySnapshot
- * @property {Record[]}       lines  — снимок всех строк
+ * @property {Rec[]}       lines  — снимок всех строк
  * @property {BceCursor|null} cursor — снимок позиции курсора
  */
 
@@ -102,7 +102,7 @@ class Bce {
 
     /** @type {number} */
     this.seq = 0;
-    /** @type {Record[]} */
+    /** @type {Rec[]} */
     this.lines = [];
     /** @type {BceHistorySnapshot[]} */
     this.history = [];
@@ -126,7 +126,7 @@ class Bce {
       { code: "ArrowUp", alt: true, shift: false, action: "moveUp" },
     ];
 
-    /** @type {Record<string, string>} */
+    /** @type {Rec<string, string>} */
     this.emmet = {
       aa: '<a href="|" target="_blank"></a>',
       a: '<a href="|"></a>',
@@ -204,7 +204,7 @@ class Bce {
 
   /**
    * Сравнивает переданный массив строк с текущим содержимым редактора.
-   * @param {Record[]} lines — массив строк для сравнения
+   * @param {Rec[]} lines — массив строк для сравнения
    * @returns {boolean}
    */
   notEqual(lines = []) {
@@ -221,7 +221,7 @@ class Bce {
 
   /**
    * Возвращает пустой массив для одной пустой строки
-   * @returns {Record[]}
+   * @returns {Rec[]}
    */
   getLines() {
     return this.checkEmpty() ? [] : this.lines;
@@ -355,7 +355,7 @@ class Bce {
    * Добавляет строку в модель.
    * @param {string} val      — содержимое строки
    * @param {number} [index]  — позиция вставки (по умолчанию — конец)
-   * @returns {Record}
+   * @returns {Rec}
    */
   addLine(val, index = this.lines.length) {
     const line = { id: this.newId(), val };
