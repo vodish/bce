@@ -2,7 +2,7 @@
 "use strict";
 
 /**
- * @typedef {Object} Record
+ * @typedef {Object} Rec
  * @property {number} id    — уникальный идентификатор строки
  * @property {string} val   — текстовое содержимое строки
  */
