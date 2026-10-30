@@ -17,7 +17,7 @@
 
 /**
  * @typedef {Object} BceHistorySnapshot
- * @property {Rec[]}       lines  — снимок всех строк
+ * @property {Rec[]}          lines  — снимок всех строк
  * @property {BceCursor|null} cursor — снимок позиции курсора
  */
 
