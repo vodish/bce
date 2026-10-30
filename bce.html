@@ -175,6 +175,11 @@
         <input type="checkbox" id="toggleLines" onchange="toggleLineNumbers(this.checked)">
         Показывать номера строк
     </label>
+ 
+    <label class="checkbox-label">
+        <input type="checkbox" id="toggleRecId" onchange="toggleRecId(this.checked)">
+        Показывать ID строк
+    </label>
 
     <label class="checkbox-label">
         <input type="checkbox" id="toggleOnChange" onchange="toggleOnChange(this.checked)">
@@ -253,6 +258,10 @@
 
     function toggleLineNumbers(show) {
         editor.setShowLineNumbers(show);
+    }
+
+    function toggleRecId(show) {
+        editor.setShowRecId(show);
     }
 
     function toggleOnChange(enable) {

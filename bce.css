@@ -54,7 +54,6 @@
     text-align: right;
     user-select: none;
     border-right: 1px solid #3c3c3c;
-    min-width: 40px;
 }
 
 .bce-gutter-line {
@@ -65,6 +64,10 @@
 .bce-gutter-line.bce-active {
     color: var(--bce-fg);
     background: var(--bce-active-line-bg);
+}
+
+.bce-editor.bce-show-id .bce-gutter-line {
+    color: #b5854f;
 }
 
 .bce-content {

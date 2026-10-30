@@ -36,6 +36,7 @@
  * @property {number}  [tabSize=4]            — размер табуляции в пробелах
  * @property {string}  [initialText=""]       — начальный текст редактора
  * @property {boolean} [showLineNumbers=false] — показывать номера строк
+ * @property {boolean} [showRecId=false]       — показывать ID строк
  * @property {boolean} [enableEmmet=false]    — включить Emmet-сокращения
  */
 
@@ -96,6 +97,7 @@ class Bce {
       tabSize: 4,
       initialText: "",
       showLineNumbers: false,
+      showRecId: false,
       enableEmmet: false,
       ...options,
     };
@@ -240,8 +242,8 @@ class Bce {
    */
   build() {
     this.container.classList.add("bce-editor");
-    if (!this.options.showLineNumbers)
-      this.container.classList.add("bce-no-gutter");
+    this._updateGutterVisibility();
+    if (this.options.showRecId) this.container.classList.add("bce-show-id");
     this.container.innerHTML = "";
 
     this.wrapper = document.createElement("div");
@@ -267,7 +269,29 @@ class Bce {
    */
   setShowLineNumbers(show) {
     this.options.showLineNumbers = show;
-    this.container.classList.toggle("bce-no-gutter", !show);
+    this._updateGutterVisibility();
+    this.render();
+  }
+
+  /**
+   * Показывает гуттер, если включены номера строк или ID строк.
+   * @returns {void}
+   * @private
+   */
+  _updateGutterVisibility() {
+    const hide = !this.options.showLineNumbers && !this.options.showRecId;
+    this.container.classList.toggle("bce-no-gutter", hide);
+  }
+
+  /**
+   * Включает / выключает отображение ID строк в гуттере.
+   * @param {boolean} show
+   * @returns {void}
+   */
+  setShowRecId(show) {
+    this.options.showRecId = show;
+    this.container.classList.toggle("bce-show-id", show);
+    this._updateGutterVisibility();
     this.render();
   }
 
@@ -385,7 +409,7 @@ class Bce {
     this.lines.forEach((line, idx) => {
       const gLine = document.createElement("div");
       gLine.className = "bce-gutter-line";
-      gLine.textContent = String(idx + 1);
+      gLine.textContent = this.options.showRecId ? line.id : String(idx + 1);
       this.gutter.appendChild(gLine);
 
       const div = document.createElement("div");
