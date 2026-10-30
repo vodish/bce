@@ -1056,6 +1056,10 @@ class Bce {
       return;
     }
 
+    if ((e.key === ">" || e.key === "<") && this._handleMoveShortcut(e)) {
+      return;
+    }
+
     if (
       this.options.enableEmmet &&
       this.emmetTriggers.includes(e.key) &&
@@ -1109,6 +1113,50 @@ class Bce {
       this.ignoreNextInput = true;
       this.handleEnter();
     }
+  }
+
+  /**
+   * Перемещение строки для мобилок по сочетаниям `,>` (вниз) и `,<` (вверх).
+   * Срабатывает, если непосредственно перед курсором стоит запятая:
+   * строка перемещается, а сам символ `>` / `<` в текст не вставляется
+   * (запятая остаётся на месте).
+   * @param {KeyboardEvent} e
+   * @returns {boolean} — `true`, если сочетание обработано
+   * @private
+   */
+  _handleMoveShortcut(e) {
+    const dir = e.key === ">" ? 1 : -1;
+    const cursor = this.getCursor();
+    if (!cursor) return false;
+    if (
+      cursor.startLine !== cursor.endLine ||
+      cursor.startOffset !== cursor.endOffset
+    ) {
+      return false;
+    }
+    if (cursor.startOffset === 0) return false;
+
+    const line = this.lines[cursor.startLine];
+    if (line.val[cursor.startOffset - 1] !== ",") return false;
+
+    e.preventDefault();
+    this.ignoreNextInput = true;
+
+    const idx = cursor.startLine;
+    const target = idx + dir;
+    if (target < 0 || target >= this.lines.length) return true;
+
+    [this.lines[idx], this.lines[target]] = [
+      this.lines[target],
+      this.lines[idx],
+    ];
+    this.commitChange({
+      startLine: target,
+      startOffset: cursor.startOffset,
+      endLine: target,
+      endOffset: cursor.endOffset,
+    });
+    return true;
   }
 
   /**
