@@ -336,6 +336,12 @@ class Bce {
         inputEvent.preventDefault();
         this.redo();
       } else if (
+        inputEvent.inputType === "insertText" &&
+        (inputEvent.data === ">" || inputEvent.data === "<") &&
+        this._tryMoveShortcut(inputEvent.data)
+      ) {
+        inputEvent.preventDefault();
+      } else if (
         this.options.enableEmmet &&
         inputEvent.inputType === "insertText" &&
         inputEvent.data === "," &&
@@ -1056,8 +1062,11 @@ class Bce {
       return;
     }
 
-    if ((e.key === ">" || e.key === "<") && this._handleMoveShortcut(e)) {
-      return;
+    if (e.key === ">" || e.key === "<") {
+      if (this._tryMoveShortcut(e.key)) {
+        e.preventDefault();
+        return;
+      }
     }
 
     if (
@@ -1116,16 +1125,20 @@ class Bce {
   }
 
   /**
-   * Перемещение строки для мобилок по сочетаниям `,>` (вниз) и `,<` (вверх).
+   * Перемещение строки по сочетаниям `,>` (вниз) и `,<` (вверх).
    * Срабатывает, если непосредственно перед курсором стоит запятая:
    * строка перемещается, а сам символ `>` / `<` в текст не вставляется
    * (запятая остаётся на месте).
-   * @param {KeyboardEvent} e
+   *
+   * Вызывается из двух мест: `keydown` (десктоп) и `beforeinput`
+   * (мобильные браузеры, где `keydown` для `>` / `<` может не срабатывать
+   * и символ приходит через `insertText`).
+   * @param {string} key — нажатый символ: `">"` или `"<"`
    * @returns {boolean} — `true`, если сочетание обработано
    * @private
    */
-  _handleMoveShortcut(e) {
-    const dir = e.key === ">" ? 1 : -1;
+  _tryMoveShortcut(key) {
+    const dir = key === ">" ? 1 : -1;
     const cursor = this.getCursor();
     if (!cursor) return false;
     if (
@@ -1138,9 +1151,6 @@ class Bce {
 
     const line = this.lines[cursor.startLine];
     if (line.val[cursor.startOffset - 1] !== ",") return false;
-
-    e.preventDefault();
-    this.ignoreNextInput = true;
 
     const idx = cursor.startLine;
     const target = idx + dir;
