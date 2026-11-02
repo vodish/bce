@@ -1204,7 +1204,34 @@ class Bce {
     const cursor = this.getCursor();
     if (!cursor) return;
     const text = this.getSelectedText(cursor);
-    if (text) navigator.clipboard.writeText(text).catch(() => {});
+    if (!text) return;
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => this._fallbackCopy(text));
+    } else {
+      this._fallbackCopy(text);
+    }
+  }
+
+  /**
+   * Резервное копирование в буфер обмена (например, в iframe без
+   * clipboard-permissions): скрытая textarea + document.execCommand("copy").
+   * @param {string} text
+   * @returns {void}
+   * @private
+   */
+  _fallbackCopy(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+    } catch (_e) {
+      /* ignore */
+    }
+    document.body.removeChild(ta);
   }
 
   /**
