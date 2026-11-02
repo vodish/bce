@@ -148,6 +148,8 @@ class Bce {
     this.content = null;
     /** @type {number | undefined} */
     this._selDesiredCol = undefined;
+    /** @type {boolean} — идёт ли активная IME-композиция (ввод КРЯ/КПЯ, мобильные клавиатуры) */
+    this._composing = false;
 
     this.build();
     this.bindEvents();
@@ -323,6 +325,19 @@ class Bce {
     this.content.addEventListener("keydown", (e) => this.onKeyDown(e));
     this.content.addEventListener("input", (e) => this.onInput(e));
     this.content.addEventListener("paste", (e) => this.onPaste(e));
+
+    // IME-композиция (китайский / японский / корейский ввод, мобильные
+    // клавиатуры): во время композиции события input приходят с промежуточным
+    // текстом — рендер в этот момент ломает композицию. Обрабатываем ввод
+    // один раз — в compositionend.
+    this.content.addEventListener("compositionstart", () => {
+      this._composing = true;
+    });
+    this.content.addEventListener("compositionend", (e) => {
+      this._composing = false;
+      this.onInput(e); // обработать финальный текст один раз
+    });
+
     this.content.addEventListener("beforeinput", (e) => {
       const inputEvent = /** @type {InputEvent} */ (e);
       if (inputEvent.inputType === "historyUndo") {
@@ -331,6 +346,9 @@ class Bce {
       } else if (inputEvent.inputType === "historyRedo") {
         inputEvent.preventDefault();
         this.redo();
+      } else if (inputEvent.inputType === "insertCompositionText") {
+        // Промежуточный текст IME — не вмешиваемся в композицию.
+        return;
       } else if (
         inputEvent.inputType === "insertText" &&
         (inputEvent.data === ">" || inputEvent.data === "<") &&
@@ -1749,6 +1767,9 @@ class Bce {
    * @returns {void}
    */
   onInput(_e) {
+    const ie = /** @type {InputEvent} */ (_e);
+    if (ie?.isComposing || this._composing) return;
+
     const lineEls = this.content.querySelectorAll(".bce-line");
     const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
     const newLines = [];
