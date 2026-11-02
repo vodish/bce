@@ -1,4 +1,3 @@
-// @ts-nocheck
 "use strict";
 
 /**
@@ -13,7 +12,7 @@
  * @property {number}  begCol           — смещение в начальной строке
  * @property {number}  endLn            — индекс конечной строки
  * @property {number}  endCol           — смещение в конечной строке
- * @property {boolean} [backward=false] — true, если выделение выполнялось справа-налево
+ * @property {boolean} [backward=false] - true, если выделение выполнялось справа-налево
  *                                       (курсор/фокус находится в точке beg)
  */
 
@@ -25,21 +24,21 @@
 
 /**
  * @typedef {Object} BceKeyBinding
- * @property {string}  [code]  — значение `KeyboardEvent.code`
- * @property {string}  [key]   — значение `KeyboardEvent.key`
- * @property {boolean} [ctrl]  — требуется ли Ctrl / Cmd
- * @property {boolean} [shift] — требуется ли Shift
- * @property {boolean} [alt]   — требуется ли Alt
+ * @property {string}  [code] - значение `KeyboardEvent.code`
+ * @property {string}  [key] - значение `KeyboardEvent.key`
+ * @property {boolean} [ctrl] - требуется ли Ctrl / Cmd
+ * @property {boolean} [shift] - требуется ли Shift
+ * @property {boolean} [alt] - требуется ли Alt
  * @property {string}  action  — имя действия
  */
 
 /**
  * @typedef {Object} BceOptions
- * @property {number}  [tabSize=4]            — размер табуляции в пробелах
- * @property {string}  [initialText=""]       — начальный текст редактора
- * @property {boolean} [showLineNumbers=false] — показывать номера строк
- * @property {boolean} [showRecId=false]       — показывать ID строк
- * @property {boolean} [enableEmmet=false]    — включить Emmet-сокращения
+ * @property {number}  [tabSize=4] - размер табуляции в пробелах
+ * @property {string}  [initialText=""] - начальный текст редактора
+ * @property {boolean} [showLineNumbers=false] - показывать номера строк
+ * @property {boolean} [showRecId=false] - показывать ID строк
+ * @property {boolean} [enableEmmet=false] - включить Emmet-сокращения
  */
 
 /**
@@ -79,7 +78,7 @@ class Bce {
 
   /**
    * @param {string | HTMLElement} container  — селектор или DOM-элемент контейнера
-   * @param {BceOptions}           [options]  — настройки редактора
+   * @param {BceOptions}           [options] - настройки редактора
    */
   constructor(container, options = {}) {
     this.container =
@@ -133,7 +132,7 @@ class Bce {
       { code: "ArrowUp", alt: true, shift: false, action: "moveUp" },
     ];
 
-    /** @type {Rec<string, string>} */
+    /** @type {Record<string, string>} */
     this.emmet = {
       aa: '<a href="|" target="_blank"></a>',
       a: '<a href="|"></a>',
@@ -150,11 +149,11 @@ class Bce {
     /** @type {string[]} */
     this.emmetTriggers = ["Tab", ","];
     /** @type {HTMLDivElement} */
-    this.wrapper = null;
+    this.wrapper = /** @type {any} */ (null);
     /** @type {HTMLDivElement} */
-    this.gutter = null;
+    this.gutter = /** @type {any} */ (null);
     /** @type {HTMLDivElement} */
-    this.content = null;
+    this.content = /** @type {any} */ (null);
     /** @type {number | undefined} */
     this._selDesiredCol = undefined;
     /** @type {boolean} — идёт ли активная IME-композиция (ввод КРЯ/КПЯ, мобильные клавиатуры) */
@@ -235,7 +234,7 @@ class Bce {
    *
    * @param {string} text
    * @param {Object}   [opts]
-   * @param {boolean}  [opts.resetHistory=false] — очистить историю undo/redo
+   * @param {boolean}  [opts.resetHistory=false] - очистить историю undo/redo
    *   (по умолчанию сохранена для обратной совместимости: старый документ
    *   остаётся доступен через Ctrl+Z).
    * @returns {void}
@@ -264,7 +263,7 @@ class Bce {
    *
    * @param {Array<{ id: number, val: string }>} lines
    * @param {Object}   [opts]
-   * @param {boolean}  [opts.resetHistory=false] — очистить историю undo/redo
+   * @param {boolean}  [opts.resetHistory=false] - очистить историю undo/redo
    * @returns {void}
    */
   setLines(lines = [], { resetHistory = false } = {}) {
@@ -533,7 +532,7 @@ class Bce {
   /**
    * Добавляет строку в модель.
    * @param {string} val      — содержимое строки
-   * @param {number} [index]  — позиция вставки (по умолчанию — конец)
+   * @param {number} [index] - позиция вставки (по умолчанию — конец)
    * @returns {Rec}
    */
   addLine(val, index = this.lines.length) {
@@ -567,7 +566,7 @@ class Bce {
     this.lines.forEach((line, idx) => {
       const gLine = document.createElement("div");
       gLine.className = "bce-gutter-line";
-      gLine.textContent = this.options.showRecId ? line.id : String(idx + 1);
+      gLine.textContent = String(this.options.showRecId ? line.id : idx + 1);
       this.gutter.appendChild(gLine);
 
       const div = document.createElement("div");
@@ -607,7 +606,7 @@ class Bce {
     let tn = walker.nextNode();
     while (tn) {
       this._nodeMap.set(tn, { lineIdx: idx, baseOffset: base });
-      base += tn.textContent.length;
+      base += (tn.textContent || "").length;
       tn = walker.nextNode();
     }
   }
@@ -633,6 +632,10 @@ class Bce {
    * @returns {void}
    */
   updateActiveLine() {
+    /**
+     * @param {Element} el
+     * @param {string} cls
+     */
     const toggleClass = (el, cls) => el?.classList.toggle(cls, false);
     this.content
       .querySelectorAll(".bce-line")
@@ -717,6 +720,7 @@ class Bce {
       (_m, open, name, attrs, close) => {
         const ha = attrs.replace(
           /([a-zA-Z_:][a-zA-Z0-9_.:-]*)(\s*=\s*)("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|[^\s"'&gt;]+)/g,
+          /** @type {(_: string, an: string, eq: string, av: string) => string} */
           (_mm, an, eq, av) =>
             `<span class="bce-attr-name">${an}</span>` +
             `<span class="bce-attr-eq">${eq}</span>` +
@@ -733,7 +737,7 @@ class Bce {
     // Сохраняем в кэш с FIFO-вытеснением при переполнении
     if (this._highlightCache.size >= this._highlightCacheMax) {
       const firstKey = this._highlightCache.keys().next().value;
-      this._highlightCache.delete(firstKey);
+      if (firstKey !== undefined) this._highlightCache.delete(firstKey);
     }
     this._highlightCache.set(val, safe);
     return safe;
@@ -769,7 +773,7 @@ class Bce {
       }
       // Резервный путь: поднимаемся до .bce-line и считаем TreeWalker'ом.
       // Также сюда попадаем, если _nodeMap устарел (_nodeMapDirty — см. onInput).
-      let lineEl = node;
+      let lineEl = /** @type {any} */ (node);
       while (
         lineEl &&
         lineEl !== this.content &&
@@ -803,7 +807,6 @@ class Bce {
         lineEl,
         NodeFilter.SHOW_TEXT,
         null,
-        false,
       );
       let currentNode = walker.nextNode();
 
@@ -812,10 +815,10 @@ class Bce {
           charOffset += offset;
           return { lineIndex, offset: charOffset };
         }
-        charOffset += currentNode.textContent.length;
+        charOffset += (currentNode.textContent || "").length;
         currentNode = walker.nextNode();
       }
-      return { lineIndex, offset: lineEl.textContent.length };
+      return { lineIndex, offset: (lineEl.textContent || "").length };
     };
 
     // Читаем anchor/focus напрямую из Selection: только они хранят направление
@@ -855,8 +858,12 @@ class Bce {
      * @param {HTMLElement} lineEl
      * @returns {BceNodePoint}
      */
+    /**
+     * @param {HTMLElement} lineEl
+     * @returns {BceNodePoint}
+     */
     const getEndOfLine = (lineEl) => {
-      let last = lineEl;
+      let last = /** @type {any} */ (lineEl);
       while (last.lastChild) last = last.lastChild;
       return last.nodeType === Node.TEXT_NODE
         ? { node: last, offset: last.textContent.length }
@@ -869,8 +876,15 @@ class Bce {
      * @param {number} offset
      * @returns {BceNodePoint}
      */
+    /**
+     * @param {number} lineIndex
+     * @param {number} offset
+     * @returns {BceNodePoint}
+     */
     const setPoint = (lineIndex, offset) => {
-      const lineEl = this.content.children[lineIndex];
+      const lineEl = /** @type {HTMLElement} */ (
+        this.content.children[lineIndex]
+      );
       if (!lineEl) return { node: this.content, offset: 0 };
       if (
         lineEl.childNodes.length === 0 ||
@@ -881,6 +895,10 @@ class Bce {
       }
 
       let remaining = offset;
+      /**
+       * @param {any} n
+       * @returns {any}
+       */
       const walk = (n) => {
         if (n.nodeType === Node.TEXT_NODE) {
           if (remaining <= n.textContent.length) {
@@ -913,6 +931,10 @@ class Bce {
 
     // Клампинг: невалидные индексы (например, begLn=999 после удаления строк)
     // иначе приводят к {node: content, offset: 0} — курсор прыгает в начало.
+    /**
+     * @param {number} ln
+     * @returns {number}
+     */
     const clampLn = (ln) => Math.max(0, Math.min(ln, this.lines.length - 1));
     begLn = clampLn(begLn);
     endLn = clampLn(endLn);
@@ -970,7 +992,7 @@ class Bce {
    * `cursor = undefined` — курсор читается из DOM (`getCursor()`), это
    * корректно после `restoreSnapshot`, где `setCursor` уже применён.
    *
-   * @param {BceCursor | null} [cursor] — снимок курсора (`undefined` — читать из DOM, `null` — без курсора)
+   * @param {BceCursor | null} [cursor] - снимок курсора (`undefined` — читать из DOM, `null` — без курсора)
    * @returns {void}
    */
   pushHistory(cursor = undefined) {
@@ -992,7 +1014,8 @@ class Bce {
     this.lines = snap.lines.map((l) => ({ id: l.id, val: l.val }));
     this.render();
     if (snap.cursor) {
-      requestAnimationFrame(() => this.setCursor(snap.cursor));
+      const cursor = snap.cursor;
+      requestAnimationFrame(() => this.setCursor(cursor));
     }
     this._fireOnChange();
   }
@@ -1033,7 +1056,7 @@ class Bce {
    *
    * @param {BceOnChangeCallback} fn
    * @param {Object}   [opts]
-   * @param {boolean}  [opts.immediate=false] — вызвать `fn(this)` сразу при подписке
+   * @param {boolean}  [opts.immediate=false] - вызвать `fn(this)` сразу при подписке
    * @returns {void}
    */
   onChange(fn, { immediate = false } = {}) {
@@ -1188,6 +1211,7 @@ class Bce {
    * @returns {void}
    */
   doAction(action) {
+    /** @type {Record<string, () => void>} */
     const actions = {
       copy: () => this.actionCopy(),
       undo: () => this.undo(),
@@ -1725,6 +1749,16 @@ class Bce {
     const anchor = this.getAnchor(cursor);
     const moving = this.getFocus(cursor);
 
+    /**
+     * @param {number} mLn
+     * @param {number} mCol
+     * @returns {void}
+     */
+    /**
+     * @param {number} mLn
+     * @param {number} mCol
+     * @returns {void}
+     */
     const setCursorAndReturn = (mLn, mCol) => {
       e.preventDefault();
       this.setCursor({
@@ -1844,6 +1878,16 @@ class Bce {
     };
 
     const moving = this.getFocus(cursor);
+    /**
+     * @param {number} mLn
+     * @param {number} mCol
+     * @returns {void}
+     */
+    /**
+     * @param {number} mLn
+     * @param {number} mCol
+     * @returns {void}
+     */
     const setCursorAndReturn = (mLn, mCol) => {
       e.preventDefault();
       this.setCursor({
@@ -2067,7 +2111,8 @@ class Bce {
 
   /**
    * Обрабатывает событие `input`: синхронизирует модель с DOM.
-   * @param {InputEvent} _e
+   * Также вызывается из `compositionend` (там приходит CompositionEvent).
+   * @param {InputEvent | CompositionEvent} _e
    * @returns {void}
    */
   onInput(_e) {
@@ -2079,8 +2124,11 @@ class Bce {
     // идти резервным путём через TreeWalker.
     this._nodeMapDirty = true;
 
-    const lineEls = this.content.querySelectorAll(".bce-line");
+    const lineEls = /** @type {NodeListOf<HTMLElement>} */ (
+      this.content.querySelectorAll(".bce-line")
+    );
     const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
+    /** @type {Rec[]} */
     const newLines = [];
 
     if (lineEls.length === this.lines.length) {
@@ -2151,7 +2199,9 @@ class Bce {
    */
   onPaste(e) {
     e.preventDefault();
-    const text = (e.clipboardData || window.clipboardData).getData("text");
+    const text = (e.clipboardData || /** @type {any} */ (window).clipboardData).getData(
+      "text",
+    );
     if (text) {
       this.insertText(text.replace(/\r\n?/g, "\n"));
     }
