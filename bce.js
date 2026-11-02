@@ -405,6 +405,39 @@ class Bce {
     this.content.addEventListener("input", (e) => this.onInput(e), signal);
     this.content.addEventListener("paste", (e) => this.onPaste(e), signal);
 
+    // Drag & drop: браузер по умолчанию вставляет HTML и ломает модель
+    // (onInput читает textContent). Перехватываем drop и вставляем
+    // только plain text через insertText().
+    this.content.addEventListener(
+      "dragover",
+      (e) => {
+        e.preventDefault(); // без этого drop не сработает
+      },
+      signal,
+    );
+    this.content.addEventListener(
+      "drop",
+      (e) => {
+        e.preventDefault();
+        const dte = /** @type {DragEvent} */ (e);
+        const text = dte.dataTransfer?.getData("text/plain");
+        if (!text) return;
+        // Устанавливаем курсор в точку drop
+        const range =
+          /** @type {any} */ (document).caretRangeFromPoint?.(
+            dte.clientX,
+            dte.clientY,
+          ) ?? null;
+        if (range) {
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+        }
+        this.insertText(text.replace(/\r\n?/g, "\n"));
+      },
+      signal,
+    );
+
     // IME-композиция (китайский / японский / корейский ввод, мобильные
     // клавиатуры): во время композиции события input приходят с промежуточным
     // текстом — рендер в этот момент ломает композицию. Обрабатываем ввод
