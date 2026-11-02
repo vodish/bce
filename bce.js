@@ -157,7 +157,7 @@ class Bce {
     } else {
       this.addLine("");
       this.render();
-      this.pushHistory();
+      this.pushHistory(null);
     }
   }
 
@@ -183,7 +183,8 @@ class Bce {
     this.seq = 0;
     text.split("\n").forEach((p) => this.addLine(p));
     this.render();
-    this.pushHistory();
+    // Курсор ещё не установлен на новое содержимое — снимок без курсора
+    this.pushHistory(null);
     this._fireOnChange();
   }
 
@@ -197,7 +198,8 @@ class Bce {
     let maxId = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
     this.seq = Math.max(this.seq, maxId);
     this.render();
-    this.pushHistory();
+    // Курсор ещё не установлен на новое содержимое — снимок без курсора
+    this.pushHistory(null);
     this._fireOnChange();
   }
 
@@ -711,25 +713,38 @@ class Bce {
 
   /**
    * Применяет изменение: рендер, установка курсора, снимок в историю.
+   * Курсор передаётся явно, чтобы снимок истории содержал позицию,
+   * актуальную для данного изменения (а не случайное DOM-выделение).
    * @param {BceCursor} [cursor]
    * @returns {void}
    */
   commitChange(cursor) {
     this.render();
     if (cursor) this.setCursor(cursor);
-    this.pushHistory();
+    this.pushHistory(cursor);
     this._fireOnChange();
   }
 
   /**
    * Сохраняет текущее состояние в стек истории.
+   *
+   * Курсор нужно передавать явно, когда он известен (например, из
+   * `commitChange`): после `render()` DOM-выделение может быть невалидным
+   * и `getCursor()` вернёт чужую позицию.
+   *
+   * `cursor = null` — снимок без курсора (содержимое заменено целиком,
+   * позиция ещё не установлена, например в `setText` / `setLines`).
+   * `cursor = undefined` — курсор читается из DOM (`getCursor()`), это
+   * корректно после `restoreSnapshot`, где `setCursor` уже применён.
+   *
+   * @param {BceCursor | null} [cursor] — снимок курсора (`undefined` — читать из DOM, `null` — без курсора)
    * @returns {void}
    */
-  pushHistory() {
+  pushHistory(cursor = undefined) {
     this.history = this.history.slice(0, this.historyIndex + 1);
     this.history.push({
       lines: this.lines.map((l) => ({ id: l.id, val: l.val })),
-      cursor: this.getCursor(),
+      cursor: cursor ?? this.getCursor(),
     });
     if (this.history.length > this.maxHistory) this.history.shift();
     this.historyIndex = this.history.length - 1;
