@@ -9,10 +9,10 @@
 
 /**
  * @typedef {Object} BceCursor
- * @property {number} startLine    — индекс начальной строки
- * @property {number} startOffset  — смещение в начальной строке
- * @property {number} endLine      — индекс конечной строки
- * @property {number} endOffset    — смещение в конечной строке
+ * @property {number} begLn    — индекс начальной строки
+ * @property {number} begCol  — смещение в начальной строке
+ * @property {number} endLn      — индекс конечной строки
+ * @property {number} endCol    — смещение в конечной строке
  */
 
 /**
@@ -446,11 +446,11 @@ class Bce {
     const cursor = this.getCursor();
     if (
       cursor &&
-      cursor.startLine >= 0 &&
-      cursor.startLine < this.lines.length
+      cursor.begLn >= 0 &&
+      cursor.begLn < this.lines.length
     ) {
-      this.content.children[cursor.startLine]?.classList.add("bce-active");
-      this.gutter.children[cursor.startLine]?.classList.add("bce-active");
+      this.content.children[cursor.begLn]?.classList.add("bce-active");
+      this.gutter.children[cursor.begLn]?.classList.add("bce-active");
     }
   }
 
@@ -473,10 +473,10 @@ class Bce {
   _getMovingEnd(anchor) {
     const cur = this.getCursor();
     if (!cur) return { line: anchor.line, offset: anchor.offset };
-    return anchor.line < cur.startLine ||
-      (anchor.line === cur.startLine && anchor.offset <= cur.startOffset)
-      ? { line: cur.endLine, offset: cur.endOffset }
-      : { line: cur.startLine, offset: cur.startOffset };
+    return anchor.line < cur.begLn ||
+      (anchor.line === cur.begLn && anchor.offset <= cur.begCol)
+      ? { line: cur.endLn, offset: cur.endCol }
+      : { line: cur.begLn, offset: cur.begCol };
   }
 
   /* ================================================================
@@ -591,13 +591,13 @@ class Bce {
       return { lineIndex, offset: lineEl.textContent.length };
     };
 
-    const start = getNodeInfo(range.startContainer, range.startOffset);
+    const beg = getNodeInfo(range.startContainer, range.startOffset);
     const end = getNodeInfo(range.endContainer, range.endOffset);
     return {
-      startLine: start.lineIndex,
-      startOffset: start.offset,
-      endLine: end.lineIndex,
-      endOffset: end.offset,
+      begLn: beg.lineIndex,
+      begCol: beg.offset,
+      endLn: end.lineIndex,
+      endCol: end.offset,
     };
   }
 
@@ -659,24 +659,24 @@ class Bce {
         : getEndOfLine(lineEl);
     };
 
-    let { startLine, startOffset, endLine, endOffset } = cursor;
+    let { begLn, begCol, endLn, endCol } = cursor;
     if (
-      startLine > endLine ||
-      (startLine === endLine && startOffset > endOffset)
+      begLn > endLn ||
+      (begLn === endLn && begCol > endCol)
     ) {
-      [startLine, endLine] = [endLine, startLine];
-      [startOffset, endOffset] = [endOffset, startOffset];
+      [begLn, endLn] = [endLn, begLn];
+      [begCol, endCol] = [endCol, begCol];
     }
 
-    const start = setPoint(startLine, startOffset);
+    const beg = setPoint(begLn, begCol);
     const end =
-      startLine === endLine && startOffset === endOffset
-        ? start
-        : setPoint(endLine, endOffset);
+      begLn === endLn && begCol === endCol
+        ? beg
+        : setPoint(endLn, endCol);
 
     try {
       const range = document.createRange();
-      range.setStart(start.node, start.offset);
+      range.setStart(beg.node, beg.offset);
       range.setEnd(end.node, end.offset);
       const sel = window.getSelection();
       if (sel) {
@@ -799,24 +799,24 @@ class Bce {
    */
   getSelectedText(cursor) {
     if (
-      cursor.startLine === cursor.endLine &&
-      cursor.startOffset === cursor.endOffset
+      cursor.begLn === cursor.endLn &&
+      cursor.begCol === cursor.endCol
     )
       return "";
-    if (cursor.startLine === cursor.endLine) {
-      return this.lines[cursor.startLine].val.substring(
-        cursor.startOffset,
-        cursor.endOffset,
+    if (cursor.begLn === cursor.endLn) {
+      return this.lines[cursor.begLn].val.substring(
+        cursor.begCol,
+        cursor.endCol,
       );
     }
-    let result = this.lines[cursor.startLine].val.substring(cursor.startOffset);
-    for (let i = cursor.startLine + 1; i < cursor.endLine; i++) {
+    let result = this.lines[cursor.begLn].val.substring(cursor.begCol);
+    for (let i = cursor.begLn + 1; i < cursor.endLn; i++) {
       result += "\n" + this.lines[i].val;
     }
     return (
       result +
       "\n" +
-      this.lines[cursor.endLine].val.substring(0, cursor.endOffset)
+      this.lines[cursor.endLn].val.substring(0, cursor.endCol)
     );
   }
 
@@ -828,25 +828,25 @@ class Bce {
   deleteSelection(cursor) {
     if (
       !cursor ||
-      (cursor.startLine === cursor.endLine &&
-        cursor.startOffset === cursor.endOffset)
+      (cursor.begLn === cursor.endLn &&
+        cursor.begCol === cursor.endCol)
     )
       return;
 
-    if (cursor.startLine === cursor.endLine) {
-      const line = this.lines[cursor.startLine];
+    if (cursor.begLn === cursor.endLn) {
+      const line = this.lines[cursor.begLn];
       line.val =
-        line.val.substring(0, cursor.startOffset) +
-        line.val.substring(cursor.endOffset);
+        line.val.substring(0, cursor.begCol) +
+        line.val.substring(cursor.endCol);
     } else {
-      const first = this.lines[cursor.startLine];
-      const last = this.lines[cursor.endLine];
+      const first = this.lines[cursor.begLn];
+      const last = this.lines[cursor.endLn];
       first.val =
-        first.val.substring(0, cursor.startOffset) +
-        last.val.substring(cursor.endOffset);
+        first.val.substring(0, cursor.begCol) +
+        last.val.substring(cursor.endCol);
       this.lines.splice(
-        cursor.startLine + 1,
-        cursor.endLine - cursor.startLine,
+        cursor.begLn + 1,
+        cursor.endLn - cursor.begLn,
       );
     }
 
@@ -855,10 +855,10 @@ class Bce {
     }
 
     this.commitChange({
-      startLine: cursor.startLine,
-      startOffset: cursor.startOffset,
-      endLine: cursor.startLine,
-      endOffset: cursor.startOffset,
+      begLn: cursor.begLn,
+      begCol: cursor.begCol,
+      endLn: cursor.begLn,
+      endCol: cursor.begCol,
     });
   }
 
@@ -873,35 +873,35 @@ class Bce {
     this.deleteSelection(cursor);
     const c = this.getCursor() || cursor;
     const parts = text.split("\n");
-    const currentLine = this.lines[c.startLine];
-    const before = currentLine.val.substring(0, c.startOffset);
-    const after = currentLine.val.substring(c.endOffset);
+    const currentLine = this.lines[c.begLn];
+    const before = currentLine.val.substring(0, c.begCol);
+    const after = currentLine.val.substring(c.endCol);
 
     if (parts.length === 1) {
       currentLine.val = before + parts[0] + after;
       this.commitChange({
-        startLine: c.startLine,
-        startOffset: before.length + parts[0].length,
-        endLine: c.startLine,
-        endOffset: before.length + parts[0].length,
+        begLn: c.begLn,
+        begCol: before.length + parts[0].length,
+        endLn: c.begLn,
+        endCol: before.length + parts[0].length,
       });
     } else {
       currentLine.val = before + parts[0];
       for (let i = 1; i < parts.length - 1; i++) {
-        this.addLine(parts[i], c.startLine + i);
+        this.addLine(parts[i], c.begLn + i);
       }
       const lastLine = {
         id: this.newId(),
         val: parts[parts.length - 1] + after,
       };
-      this.lines.splice(c.startLine + parts.length - 1, 0, lastLine);
-      const finalLine = c.startLine + parts.length - 1;
+      this.lines.splice(c.begLn + parts.length - 1, 0, lastLine);
+      const finalLine = c.begLn + parts.length - 1;
       const finalOffset = parts[parts.length - 1].length;
       this.commitChange({
-        startLine: finalLine,
-        startOffset: finalOffset,
-        endLine: finalLine,
-        endOffset: finalOffset,
+        begLn: finalLine,
+        begCol: finalOffset,
+        endLn: finalLine,
+        endCol: finalOffset,
       });
     }
   }
@@ -947,15 +947,15 @@ class Bce {
   actionDuplicate(dir) {
     const cursor = this.getCursor();
     if (!cursor) return;
-    const idx = cursor.startLine;
+    const idx = cursor.begLn;
     const copy = { id: this.newId(), val: this.lines[idx].val };
     const newIdx = dir > 0 ? idx + 1 : idx;
     this.lines.splice(newIdx, 0, copy);
     this.commitChange({
-      startLine: newIdx,
-      startOffset: cursor.startOffset,
-      endLine: newIdx,
-      endOffset: cursor.endOffset,
+      begLn: newIdx,
+      begCol: cursor.begCol,
+      endLn: newIdx,
+      endCol: cursor.endCol,
     });
   }
 
@@ -967,7 +967,7 @@ class Bce {
   actionMove(dir) {
     const cursor = this.getCursor();
     if (!cursor) return;
-    const idx = cursor.startLine;
+    const idx = cursor.begLn;
     const target = idx + dir;
     if (target < 0 || target >= this.lines.length) return;
     [this.lines[idx], this.lines[target]] = [
@@ -975,10 +975,10 @@ class Bce {
       this.lines[idx],
     ];
     this.commitChange({
-      startLine: target,
-      startOffset: cursor.startOffset,
-      endLine: target,
-      endOffset: cursor.endOffset,
+      begLn: target,
+      begCol: cursor.begCol,
+      endLn: target,
+      endCol: cursor.endCol,
     });
   }
 
@@ -994,32 +994,32 @@ class Bce {
     const cursor = this.getCursor();
     if (
       !cursor ||
-      cursor.startLine !== cursor.endLine ||
-      cursor.startOffset !== cursor.endOffset
+      cursor.begLn !== cursor.endLn ||
+      cursor.begCol !== cursor.endCol
     ) {
       return false;
     }
-    const line = this.lines[cursor.startLine];
-    const before = line.val.substring(0, cursor.startOffset);
+    const line = this.lines[cursor.begLn];
+    const before = line.val.substring(0, cursor.begCol);
     const abbr = Object.keys(this.emmet).find((k) => before.endsWith(k));
     if (!abbr) return false;
 
     const expansion = this.emmet[abbr];
     const cursorPos = expansion.indexOf("|");
     const clean = expansion.replace("|", "");
-    const startReplace = cursor.startOffset - abbr.length;
+    const startReplace = cursor.begCol - abbr.length;
     line.val =
       line.val.substring(0, startReplace) +
       clean +
-      line.val.substring(cursor.startOffset);
+      line.val.substring(cursor.begCol);
     const newOffset =
       startReplace + (cursorPos >= 0 ? cursorPos : clean.length);
 
     this.commitChange({
-      startLine: cursor.startLine,
-      startOffset: newOffset,
-      endLine: cursor.startLine,
-      endOffset: newOffset,
+      begLn: cursor.begLn,
+      begCol: newOffset,
+      endLn: cursor.begLn,
+      endCol: newOffset,
     });
     return true;
   }
@@ -1142,17 +1142,17 @@ class Bce {
     const cursor = this.getCursor();
     if (!cursor) return false;
     if (
-      cursor.startLine !== cursor.endLine ||
-      cursor.startOffset !== cursor.endOffset
+      cursor.begLn !== cursor.endLn ||
+      cursor.begCol !== cursor.endCol
     ) {
       return false;
     }
-    if (cursor.startOffset === 0) return false;
+    if (cursor.begCol === 0) return false;
 
-    const line = this.lines[cursor.startLine];
-    if (line.val[cursor.startOffset - 1] !== ",") return false;
+    const line = this.lines[cursor.begLn];
+    if (line.val[cursor.begCol - 1] !== ",") return false;
 
-    const idx = cursor.startLine;
+    const idx = cursor.begLn;
     const target = idx + dir;
     if (target < 0 || target >= this.lines.length) return true;
 
@@ -1161,10 +1161,10 @@ class Bce {
       this.lines[idx],
     ];
     this.commitChange({
-      startLine: target,
-      startOffset: cursor.startOffset,
-      endLine: target,
-      endOffset: cursor.endOffset,
+      begLn: target,
+      begCol: cursor.begCol,
+      endLn: target,
+      endCol: cursor.endCol,
     });
     return true;
   }
@@ -1179,44 +1179,44 @@ class Bce {
     const cursor = this.getCursor();
     if (!cursor) return;
     const isSelection =
-      cursor.startLine !== cursor.endLine ||
-      cursor.startOffset !== cursor.endOffset;
+      cursor.begLn !== cursor.endLn ||
+      cursor.begCol !== cursor.endCol;
 
-    if (isSelection && cursor.startOffset === 0) {
+    if (isSelection && cursor.begCol === 0) {
       if (
-        cursor.startLine === cursor.endLine &&
-        cursor.endOffset === this.lines[cursor.startLine].val.length
+        cursor.begLn === cursor.endLn &&
+        cursor.endCol === this.lines[cursor.begLn].val.length
       ) {
         e.preventDefault();
         this.ignoreNextInput = true;
         if (this.lines.length === 1) {
           this.lines[0] = { id: this.newId(), val: "" };
         } else {
-          this.lines[cursor.startLine].val = "";
+          this.lines[cursor.begLn].val = "";
         }
         this.commitChange({
-          startLine: cursor.startLine,
-          startOffset: 0,
-          endLine: cursor.startLine,
-          endOffset: 0,
+          begLn: cursor.begLn,
+          begCol: 0,
+          endLn: cursor.begLn,
+          endCol: 0,
         });
         return;
       }
-      if (cursor.endOffset === 0 && cursor.endLine > cursor.startLine) {
+      if (cursor.endCol === 0 && cursor.endLn > cursor.begLn) {
         e.preventDefault();
         this.ignoreNextInput = true;
-        const deleteCount = cursor.endLine - cursor.startLine;
+        const deleteCount = cursor.endLn - cursor.begLn;
         if (this.lines.length - deleteCount === 0) {
           this.lines = [{ id: this.newId(), val: "" }];
         } else {
-          this.lines.splice(cursor.startLine, deleteCount);
+          this.lines.splice(cursor.begLn, deleteCount);
         }
-        const targetLine = Math.min(cursor.startLine, this.lines.length - 1);
+        const targetLine = Math.min(cursor.begLn, this.lines.length - 1);
         this.commitChange({
-          startLine: targetLine,
-          startOffset: 0,
-          endLine: targetLine,
-          endOffset: 0,
+          begLn: targetLine,
+          begCol: 0,
+          endLn: targetLine,
+          endCol: 0,
         });
         return;
       }
@@ -1229,7 +1229,7 @@ class Bce {
       return;
     }
 
-    const currentLineIdx = cursor.startLine;
+    const currentLineIdx = cursor.begLn;
     const currentLine = this.lines[currentLineIdx];
 
     if (currentLine.val === "" && this.lines.length > 1) {
@@ -1243,47 +1243,47 @@ class Bce {
         newOffset = this.lines[newLineIdx].val.length;
       }
       this.commitChange({
-        startLine: newLineIdx,
-        startOffset: newOffset,
-        endLine: newLineIdx,
-        endOffset: newOffset,
+        begLn: newLineIdx,
+        begCol: newOffset,
+        endLn: newLineIdx,
+        endCol: newOffset,
       });
       return;
     }
 
     if (e.key === "Backspace") {
-      if (cursor.startOffset === 0 && cursor.startLine > 0) {
+      if (cursor.begCol === 0 && cursor.begLn > 0) {
         e.preventDefault();
         this.ignoreNextInput = true;
-        const prevLine = this.lines[cursor.startLine - 1];
-        const currLine = this.lines[cursor.startLine];
+        const prevLine = this.lines[cursor.begLn - 1];
+        const currLine = this.lines[cursor.begLn];
         const prevLen = prevLine.val.length;
         prevLine.val += currLine.val;
-        this.lines.splice(cursor.startLine, 1);
+        this.lines.splice(cursor.begLn, 1);
         this.commitChange({
-          startLine: cursor.startLine - 1,
-          startOffset: prevLen,
-          endLine: cursor.startLine - 1,
-          endOffset: prevLen,
+          begLn: cursor.begLn - 1,
+          begCol: prevLen,
+          endLn: cursor.begLn - 1,
+          endCol: prevLen,
         });
       }
     } else if (e.key === "Delete") {
       if (
-        cursor.startOffset === currentLine.val.length &&
-        cursor.startLine < this.lines.length - 1
+        cursor.begCol === currentLine.val.length &&
+        cursor.begLn < this.lines.length - 1
       ) {
         e.preventDefault();
         this.ignoreNextInput = true;
-        const currLine = this.lines[cursor.startLine];
-        const nextLine = this.lines[cursor.startLine + 1];
+        const currLine = this.lines[cursor.begLn];
+        const nextLine = this.lines[cursor.begLn + 1];
         const currLen = currLine.val.length;
         currLine.val += nextLine.val;
-        this.lines.splice(cursor.startLine + 1, 1);
+        this.lines.splice(cursor.begLn + 1, 1);
         this.commitChange({
-          startLine: cursor.startLine,
-          startOffset: currLen,
-          endLine: cursor.startLine,
-          endOffset: currLen,
+          begLn: cursor.begLn,
+          begCol: currLen,
+          endLn: cursor.begLn,
+          endCol: currLen,
         });
       }
     }
@@ -1299,19 +1299,19 @@ class Bce {
     const cursor = this.getCursor();
     if (!cursor) return;
     if (!this._selAnchor) {
-      this._selAnchor = { line: cursor.startLine, offset: cursor.startOffset };
+      this._selAnchor = { line: cursor.begLn, offset: cursor.begCol };
     }
 
     const anchor = this._selAnchor;
     const moving = this._getMovingEnd(anchor);
 
-    const setCursorAndReturn = (startLine, startOffset, endLine, endOffset) => {
+    const setCursorAndReturn = (begLn, begCol, endLn, endCol) => {
       e.preventDefault();
       this.setCursor({
-        startLine: anchor.line,
-        startOffset: this._clampOffset(anchor.line, anchor.offset),
-        endLine,
-        endOffset,
+        begLn: anchor.line,
+        begCol: this._clampOffset(anchor.line, anchor.offset),
+        endLn,
+        endCol,
       });
       this.updateActiveLine();
     };
@@ -1411,7 +1411,7 @@ class Bce {
     const cursor = this.getCursor();
     if (!cursor) return;
     if (!this._selAnchor) {
-      this._selAnchor = { line: cursor.startLine, offset: cursor.startOffset };
+      this._selAnchor = { line: cursor.begLn, offset: cursor.begCol };
     }
 
     const anchor = this._selAnchor;
@@ -1441,13 +1441,13 @@ class Bce {
     };
 
     const moving = this._getMovingEnd(anchor);
-    const setCursorAndReturn = (endLine, endOffset) => {
+    const setCursorAndReturn = (endLn, endCol) => {
       e.preventDefault();
       this.setCursor({
-        startLine: anchor.line,
-        startOffset: this._clampOffset(anchor.line, anchor.offset),
-        endLine,
-        endOffset,
+        begLn: anchor.line,
+        begCol: this._clampOffset(anchor.line, anchor.offset),
+        endLn,
+        endCol,
       });
       this.updateActiveLine();
     };
@@ -1496,44 +1496,44 @@ class Bce {
     if (!cursor) return;
 
     const hasSelection = !(
-      cursor.startLine === cursor.endLine &&
-      cursor.startOffset === cursor.endOffset
+      cursor.begLn === cursor.endLn &&
+      cursor.begCol === cursor.endCol
     );
     const tabSize = this.options.tabSize;
 
     // 1. Модификация: Если выделен текст только на ОДНОЙ строке (при обычном Tab без Shift)
-    if (hasSelection && cursor.startLine === cursor.endLine && !shift) {
-      const line = this.lines[cursor.startLine];
+    if (hasSelection && cursor.begLn === cursor.endLn && !shift) {
+      const line = this.lines[cursor.begLn];
 
       // Вырезаем выделенный кусок прямо в модели (без вызова commitChange)
       line.val =
-        line.val.substring(0, cursor.startOffset) +
-        line.val.substring(cursor.endOffset);
+        line.val.substring(0, cursor.begCol) +
+        line.val.substring(cursor.endCol);
 
-      // Теперь курсор логически "схлопнулся" в точку startOffset
-      const col = cursor.startOffset;
+      // Теперь курсор логически "схлопнулся" в точку begCol
+      const col = cursor.begCol;
       const target = Math.ceil((col + 1) / tabSize) * tabSize;
       const add = " ".repeat(target - col);
 
       // Вставляем пробелы в ту же позицию
       line.val =
-        line.val.substring(0, cursor.startOffset) +
+        line.val.substring(0, cursor.begCol) +
         add +
-        line.val.substring(cursor.startOffset);
+        line.val.substring(cursor.begCol);
 
       // Делаем ОДИН коммит для всей операции
       this.commitChange({
-        startLine: cursor.startLine,
-        startOffset: cursor.startOffset + add.length,
-        endLine: cursor.startLine,
-        endOffset: cursor.startOffset + add.length,
+        begLn: cursor.begLn,
+        begCol: cursor.begCol + add.length,
+        endLn: cursor.begLn,
+        endCol: cursor.begCol + add.length,
       });
       return;
     }
 
     // ОСТАЛЬНАЯ СТАНДАРТНАЯ ЛОГИКА РЕДАКТОРА (Многострочное выделение или Shift+Tab)
     if (hasSelection) {
-      const { startLine: start, endLine: end } = cursor;
+      const { begLn: beg, endLn: end } = cursor;
       const deltas = [];
 
       if (shift) {
@@ -1558,15 +1558,15 @@ class Bce {
       }
 
       this.commitChange({
-        startLine: start,
-        startOffset: Math.max(0, cursor.startOffset + deltas[0]),
-        endLine: end,
-        endOffset: Math.max(0, cursor.endOffset + deltas[deltas.length - 1]),
+        begLn: beg,
+        begCol: Math.max(0, cursor.begCol + deltas[0]),
+        endLn: end,
+        endCol: Math.max(0, cursor.endCol + deltas[deltas.length - 1]),
       });
     } else {
-      const line = this.lines[cursor.startLine];
+      const line = this.lines[cursor.begLn];
       if (shift) {
-        const beforeCursor = line.val.substring(0, cursor.startOffset);
+        const beforeCursor = line.val.substring(0, cursor.begCol);
         let spaceCount = 0;
         for (let i = beforeCursor.length - 1; i >= 0; i--) {
           if (beforeCursor[i] === " ") spaceCount++;
@@ -1574,33 +1574,33 @@ class Bce {
         }
         if (spaceCount === 0) return;
         const prevTabStop =
-          Math.floor((cursor.startOffset - 1) / tabSize) * tabSize;
-        const spacesToRemove = cursor.startOffset - prevTabStop;
+          Math.floor((cursor.begCol - 1) / tabSize) * tabSize;
+        const spacesToRemove = cursor.begCol - prevTabStop;
         const removeCount = Math.min(spaceCount, spacesToRemove);
         if (removeCount > 0) {
           line.val =
             beforeCursor.substring(0, beforeCursor.length - removeCount) +
-            line.val.substring(cursor.startOffset);
+            line.val.substring(cursor.begCol);
           this.commitChange({
-            startLine: cursor.startLine,
-            startOffset: cursor.startOffset - removeCount,
-            endLine: cursor.startLine,
-            endOffset: cursor.startOffset - removeCount,
+            begLn: cursor.begLn,
+            begCol: cursor.begCol - removeCount,
+            endLn: cursor.begLn,
+            endCol: cursor.begCol - removeCount,
           });
         }
       } else {
-        const col = cursor.startOffset;
+        const col = cursor.begCol;
         const target = Math.ceil((col + 1) / tabSize) * tabSize;
         const add = " ".repeat(target - col);
         line.val =
-          line.val.substring(0, cursor.startOffset) +
+          line.val.substring(0, cursor.begCol) +
           add +
-          line.val.substring(cursor.startOffset);
+          line.val.substring(cursor.begCol);
         this.commitChange({
-          startLine: cursor.startLine,
-          startOffset: cursor.startOffset + add.length,
-          endLine: cursor.startLine,
-          endOffset: cursor.startOffset + add.length,
+          begLn: cursor.begLn,
+          begCol: cursor.begCol + add.length,
+          endLn: cursor.begLn,
+          endCol: cursor.begCol + add.length,
         });
       }
     }
@@ -1612,47 +1612,47 @@ class Bce {
    */
   handleEnter() {
     let cursor = this.getCursor();
-    if (!cursor || cursor.startLine >= this.lines.length) {
+    if (!cursor || cursor.begLn >= this.lines.length) {
       const lastIdx = Math.max(0, this.lines.length - 1);
       cursor = {
-        startLine: lastIdx,
-        startOffset: lastIdx >= 0 ? this.lines[lastIdx].val.length : 0,
-        endLine: lastIdx,
-        endOffset: lastIdx >= 0 ? this.lines[lastIdx].val.length : 0,
+        begLn: lastIdx,
+        begCol: lastIdx >= 0 ? this.lines[lastIdx].val.length : 0,
+        endLn: lastIdx,
+        endCol: lastIdx >= 0 ? this.lines[lastIdx].val.length : 0,
       };
     }
 
     if (
-      cursor.startLine !== cursor.endLine ||
-      cursor.startOffset !== cursor.endOffset
+      cursor.begLn !== cursor.endLn ||
+      cursor.begCol !== cursor.endCol
     ) {
       this.deleteSelection(cursor);
       cursor = this.getCursor() || cursor;
     }
 
-    const line = this.lines[cursor.startLine];
-    const before = line.val.substring(0, cursor.startOffset);
-    const after = line.val.substring(cursor.startOffset);
+    const line = this.lines[cursor.begLn];
+    const before = line.val.substring(0, cursor.begCol);
+    const after = line.val.substring(cursor.begCol);
     const indent = this.getLeadingSpaces(before);
 
-    if (cursor.startOffset === 0 && line.val !== "") {
+    if (cursor.begCol === 0 && line.val !== "") {
       const newLine = { id: this.newId(), val: "" };
-      this.lines.splice(cursor.startLine, 0, newLine);
+      this.lines.splice(cursor.begLn, 0, newLine);
       this.commitChange({
-        startLine: cursor.startLine + 1,
-        startOffset: 0,
-        endLine: cursor.startLine + 1,
-        endOffset: 0,
+        begLn: cursor.begLn + 1,
+        begCol: 0,
+        endLn: cursor.begLn + 1,
+        endCol: 0,
       });
     } else {
       line.val = before;
       const newLine = { id: this.newId(), val: indent + after };
-      this.lines.splice(cursor.startLine + 1, 0, newLine);
+      this.lines.splice(cursor.begLn + 1, 0, newLine);
       this.commitChange({
-        startLine: cursor.startLine + 1,
-        startOffset: indent.length,
-        endLine: cursor.startLine + 1,
-        endOffset: indent.length,
+        begLn: cursor.begLn + 1,
+        begCol: indent.length,
+        endLn: cursor.begLn + 1,
+        endCol: indent.length,
       });
     }
   }

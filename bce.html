@@ -231,12 +231,12 @@
             return;
         }
 
-        monLine.textContent = cursor.startLine + 1;
-        monCol.textContent = cursor.startOffset + 1;
+        monLine.textContent = cursor.begLn + 1;
+        monCol.textContent = cursor.begCol + 1;
 
-        const isSelection = cursor.startLine !== cursor.endLine || cursor.startOffset !== cursor.endOffset;
+        const isSelection = cursor.begLn !== cursor.endLn || cursor.begCol !== cursor.endCol;
         if (isSelection) {
-            monSel.textContent = `Выделение до: Стр ${cursor.endLine + 1}, Симв ${cursor.endOffset}`;
+            monSel.textContent = `Выделение до: Стр ${cursor.endLn + 1}, Симв ${cursor.endCol}`;
             monSel.style.color = '#ffd700';
         } else {
             monSel.textContent = 'Выделение: нет';
