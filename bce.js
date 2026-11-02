@@ -1776,6 +1776,11 @@ class Bce {
 
   /**
    * Обрабатывает вставку из буфера обмена.
+   *
+   * Флаг `ignoreNextInput` здесь НЕ ставится: `insertText` → `commitChange`
+   * → `render()` полностью пересоздаёт DOM, поэтому событие `input` после
+   * вставки не приходит вовсе, а «висящий» флаг заглушил бы следующее
+   * реальное изменение (набор с клавиатуры).
    * @param {ClipboardEvent} e
    * @returns {void}
    */
@@ -1783,7 +1788,6 @@ class Bce {
     e.preventDefault();
     const text = (e.clipboardData || window.clipboardData).getData("text");
     if (text) {
-      this.ignoreNextInput = true;
       this.insertText(text.replace(/\r\n?/g, "\n"));
     }
   }
