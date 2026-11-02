@@ -9,10 +9,12 @@
 
 /**
  * @typedef {Object} BceCursor
- * @property {number} begLn    — индекс начальной строки
- * @property {number} begCol  — смещение в начальной строке
- * @property {number} endLn      — индекс конечной строки
- * @property {number} endCol    — смещение в конечной строке
+ * @property {number}  begLn            — индекс начальной строки (нормализовано: всегда не позже endLn)
+ * @property {number}  begCol           — смещение в начальной строке
+ * @property {number}  endLn            — индекс конечной строки
+ * @property {number}  endCol           — смещение в конечной строке
+ * @property {boolean} [backward=false] — true, если выделение выполнялось справа-налево
+ *                                       (курсор/фокус находится в точке beg)
  */
 
 /**
@@ -38,12 +40,6 @@
  * @property {boolean} [showLineNumbers=false] — показывать номера строк
  * @property {boolean} [showRecId=false]       — показывать ID строк
  * @property {boolean} [enableEmmet=false]    — включить Emmet-сокращения
- */
-
-/**
- * @typedef {Object} BceAnchor
- * @property {number} line   — строка якоря выделения
- * @property {number} offset — смещение якоря
  */
 
 /**
@@ -150,8 +146,6 @@ class Bce {
     this.gutter = null;
     /** @type {HTMLDivElement} */
     this.content = null;
-    /** @type {BceAnchor | null} */
-    this._selAnchor = null;
     /** @type {number | undefined} */
     this._selDesiredCol = undefined;
 
@@ -376,11 +370,10 @@ class Bce {
   }
 
   /**
-   * Сбрасывает состояние якоря выделения.
+   * Сбрасывает состояние выделения (желаемый столбец для вертикального движения).
    * @returns {void}
    */
   resetSelectionAnchor() {
-    this._selAnchor = null;
     this._selDesiredCol = undefined;
   }
 
@@ -444,13 +437,12 @@ class Bce {
       .forEach((l) => toggleClass(l, "bce-active"));
 
     const cursor = this.getCursor();
-    if (
-      cursor &&
-      cursor.begLn >= 0 &&
-      cursor.begLn < this.lines.length
-    ) {
-      this.content.children[cursor.begLn]?.classList.add("bce-active");
-      this.gutter.children[cursor.begLn]?.classList.add("bce-active");
+    if (!cursor) return;
+    // Активной подсвечивается строка курсора (фокуса), а не начало выделения
+    const { ln } = this.getFocus(cursor);
+    if (ln >= 0 && ln < this.lines.length) {
+      this.content.children[ln]?.classList.add("bce-active");
+      this.gutter.children[ln]?.classList.add("bce-active");
     }
   }
 
@@ -466,17 +458,25 @@ class Bce {
   }
 
   /**
-   * Определяет «движущийся» конец выделения относительно якоря.
-   * @param {BceAnchor} anchor
-   * @returns {{ line: number, offset: number }}
+   * Возвращает позицию курсора (фокус выделения) — точку, куда «движется» выделение.
+   * @param {BceCursor} cursor
+   * @returns {{ ln: number, col: number }}
    */
-  _getMovingEnd(anchor) {
-    const cur = this.getCursor();
-    if (!cur) return { line: anchor.line, offset: anchor.offset };
-    return anchor.line < cur.begLn ||
-      (anchor.line === cur.begLn && anchor.offset <= cur.begCol)
-      ? { line: cur.endLn, offset: cur.endCol }
-      : { line: cur.begLn, offset: cur.begCol };
+  getFocus(cursor) {
+    return cursor.backward
+      ? { ln: cursor.begLn, col: cursor.begCol }
+      : { ln: cursor.endLn, col: cursor.endCol };
+  }
+
+  /**
+   * Возвращает якорь выделения — точку, откуда началось выделение.
+   * @param {BceCursor} cursor
+   * @returns {{ ln: number, col: number }}
+   */
+  getAnchor(cursor) {
+    return cursor.backward
+      ? { ln: cursor.endLn, col: cursor.endCol }
+      : { ln: cursor.begLn, col: cursor.begCol };
   }
 
   /* ================================================================
@@ -591,13 +591,29 @@ class Bce {
       return { lineIndex, offset: lineEl.textContent.length };
     };
 
-    const beg = getNodeInfo(range.startContainer, range.startOffset);
-    const end = getNodeInfo(range.endContainer, range.endOffset);
+    // Читаем anchor/focus напрямую из Selection: только они хранят направление
+    // выделения. Range всегда нормализован (start ≤ end) и направление теряет.
+    const anchor = getNodeInfo(
+      sel.anchorNode ?? range.startContainer,
+      sel.anchorOffset ?? range.startOffset,
+    );
+    const focus = getNodeInfo(
+      sel.focusNode ?? range.endContainer,
+      sel.focusOffset ?? range.endOffset,
+    );
+
+    const anchorFirst =
+      anchor.lineIndex < focus.lineIndex ||
+      (anchor.lineIndex === focus.lineIndex && anchor.offset <= focus.offset);
+
+    const beg = anchorFirst ? anchor : focus;
+    const end = anchorFirst ? focus : anchor;
     return {
       begLn: beg.lineIndex,
       begCol: beg.offset,
       endLn: end.lineIndex,
       endCol: end.offset,
+      backward: !anchorFirst,
     };
   }
 
@@ -675,13 +691,14 @@ class Bce {
         : setPoint(endLn, endCol);
 
     try {
-      const range = document.createRange();
-      range.setStart(beg.node, beg.offset);
-      range.setEnd(end.node, end.offset);
       const sel = window.getSelection();
       if (sel) {
         sel.removeAllRanges();
-        sel.addRange(range);
+        // setBaseAndExtent сохраняет направление выделения:
+        // base — точка старта (якорь), extent — точка курсора (фокус).
+        const base = cursor.backward ? end : beg;
+        const extent = cursor.backward ? beg : end;
+        sel.setBaseAndExtent(base.node, base.offset, extent.node, extent.offset);
       }
     } catch (_e) {
       /* ignore */
@@ -1090,6 +1107,19 @@ class Bce {
       return;
     }
 
+    // Без Shift: при активном выделении стрелка схлопывает его в точке
+    // курсора (фокуса) и сдвигает от неё, а не по левому краю диапазона,
+    // как делает браузер по умолчанию.
+    if (
+      !e.shiftKey &&
+      !e.altKey &&
+      !(e.ctrlKey || e.metaKey) &&
+      ["ArrowLeft", "ArrowRight"].includes(e.key) &&
+      this._handleArrowCollapse(e)
+    ) {
+      return;
+    }
+
     if (
       e.shiftKey &&
       !e.altKey &&
@@ -1290,6 +1320,60 @@ class Bce {
   }
 
   /**
+   * Схлопывает выделение на позиции курсора (фокуса) и сдвигает его на один
+   * символ влево / вправо.
+   *
+   * Браузер по умолчанию схлопывает выделение по левому краю диапазона,
+   * из-за чего после выделения слева-направо нажатие ArrowLeft «прыгало»
+   * в начало выделения. Здесь курсор двигается от точки фокуса — как в
+   * обычных редакторах кода.
+   * @param {KeyboardEvent} e
+   * @returns {boolean} — `true`, если событие обработано (было выделение)
+   * @private
+   */
+  _handleArrowCollapse(e) {
+    const cursor = this.getCursor();
+    if (
+      !cursor ||
+      (cursor.begLn === cursor.endLn && cursor.begCol === cursor.endCol)
+    ) {
+      return false; // выделения нет — пусть браузер двигает курсор сам
+    }
+
+    e.preventDefault();
+    const { ln, col } = this.getFocus(cursor);
+
+    let newLn = ln;
+    let newCol = col;
+    if (e.key === "ArrowLeft") {
+      if (col > 0) {
+        newCol = col - 1;
+      } else if (ln > 0) {
+        newLn = ln - 1;
+        newCol = this.lines[newLn].val.length;
+      }
+    } else {
+      const lineLen = this.lines[ln].val.length;
+      if (col < lineLen) {
+        newCol = col + 1;
+      } else if (ln < this.lines.length - 1) {
+        newLn = ln + 1;
+        newCol = 0;
+      }
+    }
+
+    this.setCursor({
+      begLn: newLn,
+      begCol: newCol,
+      endLn: newLn,
+      endCol: newCol,
+    });
+    this.updateActiveLine();
+    this._selDesiredCol = undefined;
+    return true;
+  }
+
+  /**
    * Обработка Shift + Arrow / Home / End (выделение).
    * @param {KeyboardEvent} e
    * @returns {void}
@@ -1298,105 +1382,90 @@ class Bce {
   _handleShiftArrows(e) {
     const cursor = this.getCursor();
     if (!cursor) return;
-    if (!this._selAnchor) {
-      this._selAnchor = { line: cursor.begLn, offset: cursor.begCol };
-    }
 
-    const anchor = this._selAnchor;
-    const moving = this._getMovingEnd(anchor);
+    // Якорь и фокус берутся напрямую из курсора: направление выделения
+    // (backward) уже хранится в модели, отдельный _selAnchor не нужен.
+    const anchor = this.getAnchor(cursor);
+    const moving = this.getFocus(cursor);
 
-    const setCursorAndReturn = (begLn, begCol, endLn, endCol) => {
+    const setCursorAndReturn = (mLn, mCol) => {
       e.preventDefault();
       this.setCursor({
-        begLn: anchor.line,
-        begCol: this._clampOffset(anchor.line, anchor.offset),
-        endLn,
-        endCol,
+        begLn: anchor.ln,
+        begCol: this._clampOffset(anchor.ln, anchor.col),
+        endLn: mLn,
+        endCol: this._clampOffset(mLn, mCol),
+        backward: mLn < anchor.ln || (mLn === anchor.ln && mCol < anchor.col),
       });
       this.updateActiveLine();
     };
 
     if (e.key === "ArrowDown") {
-      if (moving.line >= this.lines.length - 1) {
+      if (moving.ln >= this.lines.length - 1) {
         const lastLine = this.lines.length - 1;
-        setCursorAndReturn(
-          anchor.line,
-          anchor.offset,
-          lastLine,
-          this.lines[lastLine].val.length,
-        );
+        setCursorAndReturn(lastLine, this.lines[lastLine].val.length);
         return;
       }
-      const nextLine = moving.line + 1;
+      const nextLine = moving.ln + 1;
       if (this._selDesiredCol === undefined)
-        this._selDesiredCol = moving.offset;
+        this._selDesiredCol = moving.col;
       const targetOffset = Math.min(
         this._selDesiredCol,
         this.lines[nextLine].val.length,
       );
-      setCursorAndReturn(anchor.line, anchor.offset, nextLine, targetOffset);
+      setCursorAndReturn(nextLine, targetOffset);
       return;
     }
 
     if (e.key === "ArrowUp") {
-      if (moving.line === 0) {
-        setCursorAndReturn(anchor.line, anchor.offset, 0, 0);
+      if (moving.ln === 0) {
+        setCursorAndReturn(0, 0);
         return;
       }
-      const prevLine = moving.line - 1;
+      const prevLine = moving.ln - 1;
       if (this._selDesiredCol === undefined)
-        this._selDesiredCol = moving.offset;
+        this._selDesiredCol = moving.col;
       const targetOffset = Math.min(
         this._selDesiredCol,
         this.lines[prevLine].val.length,
       );
-      setCursorAndReturn(anchor.line, anchor.offset, prevLine, targetOffset);
+      setCursorAndReturn(prevLine, targetOffset);
       return;
     }
 
     if (e.key === "ArrowLeft") {
-      const { line: mLine, offset: mOffset } = moving;
+      const { ln: mLine, col: mOffset } = moving;
       if (mOffset > 0) {
-        setCursorAndReturn(anchor.line, anchor.offset, mLine, mOffset - 1);
+        setCursorAndReturn(mLine, mOffset - 1);
       } else if (mLine > 0) {
         const prevLine = mLine - 1;
-        setCursorAndReturn(
-          anchor.line,
-          anchor.offset,
-          prevLine,
-          this.lines[prevLine].val.length,
-        );
+        setCursorAndReturn(prevLine, this.lines[prevLine].val.length);
       }
       this._selDesiredCol = undefined;
       return;
     }
 
     if (e.key === "ArrowRight") {
-      const { line: mLine, offset: mOffset } = moving;
+      const { ln: mLine, col: mOffset } = moving;
       const lineLen = this.lines[mLine].val.length;
       if (mOffset < lineLen) {
-        setCursorAndReturn(anchor.line, anchor.offset, mLine, mOffset + 1);
+        setCursorAndReturn(mLine, mOffset + 1);
       } else if (mLine < this.lines.length - 1) {
-        setCursorAndReturn(anchor.line, anchor.offset, mLine + 1, 0);
+        setCursorAndReturn(mLine + 1, 0);
       }
       this._selDesiredCol = undefined;
       return;
     }
 
     if (e.key === "Home") {
-      setCursorAndReturn(anchor.line, anchor.offset, moving.line, 0);
+      setCursorAndReturn(moving.ln, 0);
       this._selDesiredCol = undefined;
       return;
     }
 
     if (e.key === "End") {
-      const lineIdx = moving.line;
-      setCursorAndReturn(
-        anchor.line,
-        anchor.offset,
-        lineIdx,
-        this.lines[lineIdx].val.length,
-      );
+      const lineIdx = moving.ln;
+      setCursorAndReturn(lineIdx, this.lines[lineIdx].val.length);
       this._selDesiredCol = undefined;
     }
   }
@@ -1410,11 +1479,8 @@ class Bce {
   _handleShiftCtrlArrows(e) {
     const cursor = this.getCursor();
     if (!cursor) return;
-    if (!this._selAnchor) {
-      this._selAnchor = { line: cursor.begLn, offset: cursor.begCol };
-    }
 
-    const anchor = this._selAnchor;
+    const anchor = this.getAnchor(cursor);
 
     /**
      * Ищет границу слова в тексте.
@@ -1440,20 +1506,21 @@ class Bce {
       }
     };
 
-    const moving = this._getMovingEnd(anchor);
-    const setCursorAndReturn = (endLn, endCol) => {
+    const moving = this.getFocus(cursor);
+    const setCursorAndReturn = (mLn, mCol) => {
       e.preventDefault();
       this.setCursor({
-        begLn: anchor.line,
-        begCol: this._clampOffset(anchor.line, anchor.offset),
-        endLn,
-        endCol,
+        begLn: anchor.ln,
+        begCol: this._clampOffset(anchor.ln, anchor.col),
+        endLn: mLn,
+        endCol: this._clampOffset(mLn, mCol),
+        backward: mLn < anchor.ln || (mLn === anchor.ln && mCol < anchor.col),
       });
       this.updateActiveLine();
     };
 
     if (e.key === "ArrowLeft") {
-      const { line: mLine, offset: mOffset } = moving;
+      const { ln: mLine, col: mOffset } = moving;
       if (mOffset > 0) {
         setCursorAndReturn(
           mLine,
@@ -1468,7 +1535,7 @@ class Bce {
     }
 
     if (e.key === "ArrowRight") {
-      const { line: mLine, offset: mOffset } = moving;
+      const { ln: mLine, col: mOffset } = moving;
       const lineLen = this.lines[mLine].val.length;
       if (mOffset < lineLen) {
         setCursorAndReturn(
@@ -1537,7 +1604,7 @@ class Bce {
       const deltas = [];
 
       if (shift) {
-        for (let i = start; i <= end; i++) {
+        for (let i = beg; i <= end; i++) {
           const leading = this.getLeadingSpaces(this.lines[i].val);
           const removeCount =
             leading.length > 0
@@ -1547,7 +1614,7 @@ class Bce {
           deltas.push(-removeCount);
         }
       } else {
-        for (let i = start; i <= end; i++) {
+        for (let i = beg; i <= end; i++) {
           const leading = this.getLeadingSpaces(this.lines[i].val);
           const currentLen = leading.length;
           const target = Math.ceil((currentLen + 1) / tabSize) * tabSize;
