@@ -36,6 +36,11 @@
         border-radius: 6px;
         font-size: 13px;
         line-height: 1.5;
+        position: sticky;
+        top: 0;
+        display: flex;
+        align-items: baseline;
+        gap: 2ch;
     }
 
     .info code {
@@ -156,7 +161,10 @@
 <h1>📝 Bce Editor</h1>
 
 <div class="info">
-    <b>Emmet:</b> введите <code>a</code>, <code>code</code> и нажмите <b>Tab</b> (ПК) или <b>,</b> (мобильный).
+    <div>
+        <b>Emmet:</b> введите <code>a</code>, <code>code</code> и нажмите <b>Tab</b> (ПК) или <b>,</b> (мобильный).
+    </div>
+    <button onclick="firstVisibleLine(this)">Первая видимая строка ()</button>
 </div>
 
 <div id="editor"></div>
@@ -167,9 +175,10 @@
 </div>
 
 <div class="controls">
-    <button onclick="loadLines()">📋 Строки (JSON)</button>
     <button class="secondary" onclick="editor.undo()">↩ Отменить</button>
     <button class="secondary" onclick="editor.redo()">↪ Вернуть</button>
+    <button onclick="loadLines()">📋 Строки (JSON)</button>
+    
     
     <label class="checkbox-label">
         <input type="checkbox" id="toggleLines" onchange="toggleLineNumbers(this.checked)">
@@ -254,6 +263,11 @@
         document.getElementById('output').textContent = JSON.stringify(editor.lines, null, 2);
         // Прокрутка к результату на мобильных
         document.getElementById('output').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function firstVisibleLine(el) {
+        const idx = editor.getFirstVisibleLineExact(true);
+        el.textContent = `Первая видимая строка (${idx})`;
     }
 
     function toggleLineNumbers(show) {

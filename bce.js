@@ -283,33 +283,32 @@ class Bce {
    * Первая видимая строка при переменной высоте (переносы).
    * O(log n) обращений к layout. Вызывать, пока DOM жив (до destroy()).
    *
-   * @param {Object}  [opts]
-   * @param {boolean} [opts.fullyVisible=false] - true: первая ПОЛНОСТЬЮ видимая
+   * @param {boolean} [fullyVisible=false] - true: первая ПОЛНОСТЬЮ видимая
    * @returns {number} индекс в this.lines (0-based) или -1
    */
-  getFirstVisibleLineExact({ fullyVisible = false } = {}) {
+  getFirstVisibleLineExact(fullyVisible = false) {
     const content = this.content;
     const total = this.lines.length;
     if (!content || total === 0) return -1;
 
-    const scrollTop = content.scrollTop;
-    const contentTop = content.getBoundingClientRect().top;
+    let viewTop = 0;
+    let scroller = /** @type {Element | null} */ (content.parentElement);
+    while (scroller && scroller !== document.body) {
+      const st = getComputedStyle(scroller);
+      if (/(auto|scroll)/.test(st.overflowY)) {
+        viewTop = Math.max(0, scroller.getBoundingClientRect().top);
+        break;
+      }
+      scroller = scroller.parentElement;
+    }
+    if (!scroller) scroller = content.parentElement ?? content;
 
-    /**
-     * Верх строки в системе координат content (учитывая scrollTop).
-     * @param {number} i
-     * @returns {number}
-     */
-    const lineTop = (i) => {
-      const el = /** @type {HTMLElement|undefined} */ (content.children[i]);
-      if (!el) return Number.POSITIVE_INFINITY;
-      return el.getBoundingClientRect().top - contentTop + scrollTop;
-    };
+    viewTop = this._viewTopWithSticky(viewTop);
+    const viewportBottom = viewTop + scroller.clientHeight;
 
     let lo = 0;
     let hi = total - 1;
     let result = total - 1;
-
     while (lo <= hi) {
       const mid = (lo + hi) >> 1;
       const el = /** @type {HTMLElement|undefined} */ (content.children[mid]);
@@ -317,9 +316,10 @@ class Bce {
         hi = mid - 1;
         continue;
       }
-      const top = lineTop(mid);
-      const bottom = top + el.offsetHeight;
-      const visible = fullyVisible ? top >= scrollTop : bottom > scrollTop;
+      const r = el.getBoundingClientRect();
+      const visible = fullyVisible
+        ? r.top >= viewTop && r.bottom <= viewportBottom
+        : r.bottom > viewTop;
       if (visible) {
         result = mid;
         hi = mid - 1;
@@ -328,6 +328,37 @@ class Bce {
       }
     }
     return result;
+  }
+
+  /**
+   * @param {number} viewTop
+   * @returns {number}
+   * @private
+   */
+  _viewTopWithSticky(viewTop) {
+    const content = this.content;
+    if (!content) return viewTop;
+    const rect = content.getBoundingClientRect();
+    if (rect.bottom <= viewTop) return viewTop;
+
+    const left = Math.max(0, rect.left);
+    const right = Math.min(window.innerWidth - 1, rect.right);
+    if (right <= left) return viewTop;
+    const probeX = (left + right) / 2;
+
+    const probeY = viewTop + 1;
+    if (probeY < 0 || probeY >= window.innerHeight) return viewTop;
+
+    const stack = document.elementsFromPoint(probeX, probeY);
+    let top = viewTop;
+    for (const el of stack) {
+      if (el === content || content.contains(el)) break;
+      const st = getComputedStyle(el);
+      if (st.position !== "sticky" && st.position !== "fixed") continue;
+      const r = el.getBoundingClientRect();
+      if (r.top <= top + 1 && r.bottom > top) top = r.bottom;
+    }
+    return top;
   }
 
   /**
