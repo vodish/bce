@@ -1086,11 +1086,10 @@ class Bce {
     for (let i = cursor.begLn + 1; i < cursor.endLn; i++) {
       result += "\n" + this.lines[i].val;
     }
-    return (
-      result +
-      "\n" +
-      this.lines[cursor.endLn].val.substring(0, cursor.endCol)
-    );
+    // Выделение до НАЧАЛА конечной строки (endCol === 0) — хвостовой \n
+    // и пустой хвост не нужны (иначе "line1\nline2\n" вместо "line1\nline2").
+    const tail = this.lines[cursor.endLn].val.substring(0, cursor.endCol);
+    return cursor.endCol === 0 ? result : result + "\n" + tail;
   }
 
   /**
