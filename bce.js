@@ -88,6 +88,15 @@ class Bce {
         : container;
     if (!this.container) throw new Error("Bce: контейнер не найден");
 
+    // Защита от двойной инициализации: уничтожаем предыдущий экземпляр,
+    // иначе останутся «висящие» обработчики и DOM от старого редактора.
+    if (/** @type {any} */ (this.container).__bce) {
+      console.warn(
+        "Bce: контейнер уже инициализирован, предыдущий экземпляр уничтожается",
+      );
+      /** @type {any} */ (this.container).__bce.destroy();
+    }
+
     /** @type {Required<BceOptions>} */
     this.options = {
       tabSize: 4,
@@ -150,6 +159,8 @@ class Bce {
     this._selDesiredCol = undefined;
     /** @type {boolean} — идёт ли активная IME-композиция (ввод КРЯ/КПЯ, мобильные клавиатуры) */
     this._composing = false;
+    /** @type {AbortController} — прерывает все слушатели в destroy() */
+    this._abort = new AbortController();
 
     this.build();
     this.bindEvents();
@@ -161,6 +172,32 @@ class Bce {
       this.render();
       this.pushHistory(null);
     }
+
+    // Маркер «контейнер занят» для защиты от двойной инициализации
+    /** @type {any} */ (this.container).__bce = this;
+  }
+
+  /**
+   * Полностью уничтожает редактор: снимает все обработчики (через
+   * AbortController), очищает контейнер и внутреннее состояние.
+   * Для SPA-навигации: вызывайте перед тем, как выбросить экземпляр.
+   * @returns {void}
+   */
+  destroy() {
+    this._abort.abort();
+    this.container.innerHTML = "";
+    this.container.classList.remove(
+      "bce-editor",
+      "bce-no-gutter",
+      "bce-show-id",
+    );
+    // Снимаем маркер занятости контейнера
+    delete /** @type {any} */ (this.container).__bce;
+    this.lines = [];
+    this.history = [];
+    this.historyIndex = -1;
+    this._onChangeCallback = null;
+    this._highlightCache?.clear();
   }
 
   /* ================================================================
@@ -348,59 +385,76 @@ class Bce {
    * @returns {void}
    */
   bindEvents() {
-    this.content.addEventListener("keydown", (e) => this.onKeyDown(e));
-    this.content.addEventListener("input", (e) => this.onInput(e));
-    this.content.addEventListener("paste", (e) => this.onPaste(e));
+    const signal = { signal: this._abort.signal };
+    this.content.addEventListener("keydown", (e) => this.onKeyDown(e), signal);
+    this.content.addEventListener("input", (e) => this.onInput(e), signal);
+    this.content.addEventListener("paste", (e) => this.onPaste(e), signal);
 
     // IME-композиция (китайский / японский / корейский ввод, мобильные
     // клавиатуры): во время композиции события input приходят с промежуточным
     // текстом — рендер в этот момент ломает композицию. Обрабатываем ввод
     // один раз — в compositionend.
-    this.content.addEventListener("compositionstart", () => {
-      this._composing = true;
-    });
-    this.content.addEventListener("compositionend", (e) => {
-      this._composing = false;
-      this.onInput(e); // обработать финальный текст один раз
-    });
+    this.content.addEventListener(
+      "compositionstart",
+      () => {
+        this._composing = true;
+      },
+      signal,
+    );
+    this.content.addEventListener(
+      "compositionend",
+      (e) => {
+        this._composing = false;
+        this.onInput(e); // обработать финальный текст один раз
+      },
+      signal,
+    );
 
-    this.content.addEventListener("beforeinput", (e) => {
-      const inputEvent = /** @type {InputEvent} */ (e);
-      if (inputEvent.inputType === "historyUndo") {
-        inputEvent.preventDefault();
-        this.undo();
-      } else if (inputEvent.inputType === "historyRedo") {
-        inputEvent.preventDefault();
-        this.redo();
-      } else if (inputEvent.inputType === "insertCompositionText") {
-        // Промежуточный текст IME — не вмешиваемся в композицию.
-        return;
-      } else if (
-        inputEvent.inputType === "insertText" &&
-        (inputEvent.data === ">" || inputEvent.data === "<") &&
-        this._tryMoveShortcut(inputEvent.data)
-      ) {
-        inputEvent.preventDefault();
-      } else if (
-        this.options.enableEmmet &&
-        inputEvent.inputType === "insertText" &&
-        inputEvent.data === "," &&
-        this.tryEmmet()
-      ) {
-        inputEvent.preventDefault();
-      }
-    });
+    this.content.addEventListener(
+      "beforeinput",
+      (e) => {
+        const inputEvent = /** @type {InputEvent} */ (e);
+        if (inputEvent.inputType === "historyUndo") {
+          inputEvent.preventDefault();
+          this.undo();
+        } else if (inputEvent.inputType === "historyRedo") {
+          inputEvent.preventDefault();
+          this.redo();
+        } else if (inputEvent.inputType === "insertCompositionText") {
+          // Промежуточный текст IME — не вмешиваемся в композицию.
+          return;
+        } else if (
+          inputEvent.inputType === "insertText" &&
+          (inputEvent.data === ">" || inputEvent.data === "<") &&
+          this._tryMoveShortcut(inputEvent.data)
+        ) {
+          inputEvent.preventDefault();
+        } else if (
+          this.options.enableEmmet &&
+          inputEvent.inputType === "insertText" &&
+          inputEvent.data === "," &&
+          this.tryEmmet()
+        ) {
+          inputEvent.preventDefault();
+        }
+      },
+      signal,
+    );
 
     const resetHandlers = () => {
       this.updateActiveLine();
       this.resetSelectionAnchor();
     };
-    this.content.addEventListener("keyup", (e) => {
-      this.updateActiveLine();
-      if (!e.shiftKey) this.resetSelectionAnchor();
-    });
-    this.content.addEventListener("mouseup", resetHandlers);
-    this.content.addEventListener("click", resetHandlers);
+    this.content.addEventListener(
+      "keyup",
+      (e) => {
+        this.updateActiveLine();
+        if (!e.shiftKey) this.resetSelectionAnchor();
+      },
+      signal,
+    );
+    this.content.addEventListener("mouseup", resetHandlers, signal);
+    this.content.addEventListener("click", resetHandlers, signal);
   }
 
   /* ================================================================
