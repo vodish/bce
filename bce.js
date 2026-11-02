@@ -234,6 +234,12 @@ class Bce {
     this._nodeMap = new WeakMap();
     /** @type {boolean} - true, если _nodeMap устарел (см. onInput) */
     this._nodeMapDirty = false;
+    /**
+     * Индекс активной (подсвеченной) строки; кэш для O(1)
+     * updateActiveLine() вместо querySelectorAll по всем строкам.
+     * @type {number}
+     */
+    this._activeLine = -1;
     /** @type {string[] | null} - кэш Object.keys(this.emmet) (сбрасывается в add/removeEmmet) */
     this._emmetKeys = null;
 
@@ -271,6 +277,7 @@ class Bce {
     this._baseSnapshot = null;
     this.history = [];
     this.historyIndex = -1;
+    this._activeLine = -1;
     this._onChangeCallback = null;
     this._highlightCache?.clear();
     this._emmetKeys = null;
@@ -558,7 +565,10 @@ class Bce {
       "compositionend",
       (e) => {
         this._composing = false;
-        this.onInput(e);
+        // IME: курсор восстанавливаем в следующем кадре - синхронная
+        // установка выделения во время финализации композиции
+        // конфликтует с браузером
+        this.onInput(e, { deferCursor: true });
       },
       signal,
     );
@@ -679,8 +689,10 @@ class Bce {
     });
 
     if (cursor) this.setCursor(cursor);
+    // DOM пересоздан - кэш активной строки больше не указывает на узел
+    this._activeLine = -1;
     this.updateActiveLine();
-    // DOM пересоздан - индекс текстовых узлов снова актуален
+    // Индекс текстовых узлов снова актуален
     this._nodeMapDirty = false;
 
     this.content.scrollTop = scrollTop;
@@ -805,6 +817,8 @@ class Bce {
    */
   _reindexTail(from) {
     const total = this.lines.length;
+    // Строки после from сдвинулись - кэш активной строки устарел
+    this._activeLine = -1;
     for (let i = from; i < total; i++) {
       const div = /** @type {HTMLElement | undefined} */ (
         this.content.children[i]
@@ -833,26 +847,24 @@ class Bce {
 
   /**
    * Подсвечивает активную строку в контенте и гуттере.
+   * O(1) за счёт кэша _activeLine: снимает подсветку только с предыдущей
+   * активной строки, а не обходит весь DOM через querySelectorAll
+   * (критично для больших документов - вызывается на каждый ввод).
    * @returns {void}
    */
   updateActiveLine() {
-    /**
-     * @param {Element} el
-     * @param {string} cls
-     */
-    const toggleClass = (el, cls) => el?.classList.toggle(cls, false);
-    this.content
-      .querySelectorAll(".bce-line")
-      .forEach((l) => toggleClass(l, "bce-active"));
-    this.gutter
-      .querySelectorAll(".bce-gutter-line")
-      .forEach((l) => toggleClass(l, "bce-active"));
-
     const cursor = this.getCursor();
-    if (!cursor) return;
     // Активной подсвечивается строка курсора (фокуса), а не начало выделения
-    const { ln } = this.getFocus(cursor);
-    if (ln >= 0 && ln < this.lines.length) {
+    let ln = cursor ? this.getFocus(cursor).ln : -1;
+    if (ln < 0 || ln >= this.lines.length) ln = -1;
+    if (ln === this._activeLine) return;
+
+    if (this._activeLine >= 0) {
+      this.content.children[this._activeLine]?.classList.remove("bce-active");
+      this.gutter.children[this._activeLine]?.classList.remove("bce-active");
+    }
+    this._activeLine = ln;
+    if (ln >= 0) {
       this.content.children[ln]?.classList.add("bce-active");
       this.gutter.children[ln]?.classList.add("bce-active");
     }
@@ -1434,8 +1446,10 @@ class Bce {
     this.historyIndex--;
     this.lines = this._applyOpsTo(this.lines, entry.inverse);
     this._renderPatch(entry.inverse);
+    // Синхронно: _renderPatch уже пересоздал затронутые узлы, курсор
+    // восстанавливается до выхода из обработчика (без «прыжка» на кадр)
     const cursor = entry.cursorBefore;
-    if (cursor) requestAnimationFrame(() => this.setCursor(cursor));
+    if (cursor) this.setCursor(cursor);
     this._fireOnChange();
   }
 
@@ -1449,8 +1463,9 @@ class Bce {
     const entry = this.history[this.historyIndex];
     this.lines = this._applyOpsTo(this.lines, entry.forward);
     this._renderPatch(entry.forward);
+    // Синхронно - см. undo()
     const cursor = entry.cursorAfter;
-    if (cursor) requestAnimationFrame(() => this.setCursor(cursor));
+    if (cursor) this.setCursor(cursor);
     this._fireOnChange();
   }
 
@@ -2643,9 +2658,13 @@ class Bce {
    * Обрабатывает событие `input`: синхронизирует модель с DOM.
    * Также вызывается из `compositionend` (там приходит CompositionEvent).
    * @param {InputEvent | CompositionEvent} _e
+   * @param {Object}   [opts]
+   * @param {boolean}  [opts.deferCursor=false] - восстановить курсор в
+   *   следующем кадре (для IME: во время финализации композиции синхронная
+   *   установка выделения конфликтует с браузером)
    * @returns {void}
    */
-  onInput(_e) {
+  onInput(_e, { deferCursor = false } = {}) {
     const ie = /** @type {InputEvent} */ (_e);
     if (ie?.isComposing || this._composing) return;
 
@@ -2722,7 +2741,15 @@ class Bce {
     }
 
     if (cursor) {
-      requestAnimationFrame(() => this.setCursor(cursor));
+      if (deferCursor) {
+        // IME: не трогаем выделение во время финализации композиции
+        requestAnimationFrame(() => this.setCursor(cursor));
+      } else {
+        // Синхронно: renderLine уже пересоздал узлы строки - caret
+        // восстанавливается до выхода из обработчика, и следующий
+        // ключ при быстром наборе не попадает в сброшенную позицию
+        this.setCursor(cursor);
+      }
     }
     this._pushEntry(ops, cursor, inverse);
     this._fireOnChange();

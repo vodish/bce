@@ -47,6 +47,7 @@ function makeEditor(initial, stubs = {}) {
   ed._highlightCacheMax = 500;
   ed._nodeMap = new WeakMap();
   ed._nodeMapDirty = false;
+  ed._activeLine = -1;
   ed.keyBindings = [];
   ed.emmet = {};
   ed.emmetTriggers = ["Tab", ","];
