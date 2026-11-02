@@ -784,6 +784,14 @@ class Bce {
       [begCol, endCol] = [endCol, begCol];
     }
 
+    // Клампинг: невалидные индексы (например, begLn=999 после удаления строк)
+    // иначе приводят к {node: content, offset: 0} — курсор прыгает в начало.
+    const clampLn = (ln) => Math.max(0, Math.min(ln, this.lines.length - 1));
+    begLn = clampLn(begLn);
+    endLn = clampLn(endLn);
+    begCol = this._clampOffset(begLn, begCol);
+    endCol = this._clampOffset(endLn, endCol);
+
     const beg = setPoint(begLn, begCol);
     const end =
       begLn === endLn && begCol === endCol
