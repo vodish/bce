@@ -77,7 +77,33 @@ class Bce {
   }
 
   /**
-   * @param {string | HTMLElement} container  — селектор или DOM-элемент контейнера
+   * Ищет границу слова в тексте (используется Shift+Ctrl+Arrows).
+   * Не использует состояние экземпляра — можно вызывать как
+   * Bce.prototype.findWordBoundary.call(null, val, pos, dir).
+   * @param {string} val       текст строки
+   * @param {number} pos       текущая позиция
+   * @param {number} direction 1 (вперёд) или -1 (назад)
+   * @returns {number}
+   */
+  findWordBoundary(val, pos, direction) {
+    const len = val.length;
+    if (direction > 0) {
+      let i = pos;
+      while (i < len && /\s/.test(val[i])) i++;
+      while (i < len && !/\s/.test(val[i])) i++;
+      return i;
+    } else {
+      let i = pos;
+      if (i > 0) i--;
+      while (i > 0 && /\s/.test(val[i])) i--;
+      while (i > 0 && !/\s/.test(val[i])) i--;
+      if (i === 0 && !/\s/.test(val[0])) return 0;
+      return i > 0 ? i + 1 : 0;
+    }
+  }
+
+  /**
+   * @param {string | HTMLElement} container — селектор или DOM-элемент контейнера
    * @param {BceOptions}           [options] - настройки редактора
    */
   constructor(container, options = {}) {
@@ -156,13 +182,13 @@ class Bce {
     this.content = /** @type {any} */ (null);
     /** @type {number | undefined} */
     this._selDesiredCol = undefined;
-    /** @type {boolean} — идёт ли активная IME-композиция (ввод КРЯ/КПЯ, мобильные клавиатуры) */
+    /** @type {boolean} - идёт ли активная IME-композиция (ввод КРЯ/КПЯ, мобильные клавиатуры) */
     this._composing = false;
-    /** @type {AbortController} — прерывает все слушатели в destroy() */
+    /** @type {AbortController} - прерывает все слушатели в destroy() */
     this._abort = new AbortController();
-    /** @type {Map<string, string>} — кэш результата highlight() по тексту строки */
+    /** @type {Map<string, string>} - кэш результата highlight() по тексту строки */
     this._highlightCache = new Map();
-    /** @type {number} — максимум записей в кэше подсветки (FIFO-вытеснение) */
+    /** @type {number} - максимум записей в кэше подсветки (FIFO-вытеснение) */
     this._highlightCacheMax = 500;
     /**
      * Индекс текстовых узлов → позиция в модели. Заполняется в render()
@@ -173,7 +199,7 @@ class Bce {
      * @type {WeakMap<Node, { lineIdx: number, baseOffset: number }>}
      */
     this._nodeMap = new WeakMap();
-    /** @type {boolean} — true, если _nodeMap устарел (см. onInput) */
+    /** @type {boolean} - true, если _nodeMap устарел (см. onInput) */
     this._nodeMapDirty = false;
 
     this.build();
@@ -695,7 +721,7 @@ class Bce {
    * Экранирует текст и оборачивает HTML-теги / атрибуты / комментарии
    * в `<span>` с соответствующими CSS-классами.
    * @param {string} val — сырой текст строки
-   * @returns {string} — HTML-строка
+   * @returns {string} - HTML-строка
    */
   highlight(val) {
     if (!val) return "";
@@ -930,7 +956,7 @@ class Bce {
     }
 
     // Клампинг: невалидные индексы (например, begLn=999 после удаления строк)
-    // иначе приводят к {node: content, offset: 0} — курсор прыгает в начало.
+    // иначе приводят к {node: content, offset: 0} - курсор прыгает в начало.
     /**
      * @param {number} ln
      * @returns {number}
@@ -1311,7 +1337,7 @@ class Bce {
 
   /**
    * Пытается развернуть Emmet-сокращение перед курсором.
-   * @returns {boolean} — `true`, если сокращение было раскрыто
+   * @returns {boolean} - `true`, если сокращение было раскрыто
    */
   tryEmmet() {
     const cursor = this.getCursor();
@@ -1354,7 +1380,7 @@ class Bce {
   /**
    * Проверяет событие клавиатуры на соответствие привязкам.
    * @param {KeyboardEvent} e
-   * @returns {string | null} — имя действия или `null`
+   * @returns {string | null} - имя действия или `null`
    */
   matchBinding(e) {
     for (const b of this.keyBindings) {
@@ -1389,7 +1415,7 @@ class Bce {
   /**
    * Действия по привязкам (`keyBindings`), сочетания `,>` / `,<` и Emmet.
    * @param {KeyboardEvent} e
-   * @returns {boolean} — `true`, если событие обработано
+   * @returns {boolean} - `true`, если событие обработано
    * @private
    */
   _handleActionKeys(e) {
@@ -1422,7 +1448,7 @@ class Bce {
   /**
    * Tab / Backspace / Delete / Enter.
    * @param {KeyboardEvent} e
-   * @returns {boolean} — `true`, если событие обработано
+   * @returns {boolean} - `true`, если событие обработано
    * @private
    */
   _handleSpecialKeys(e) {
@@ -1452,7 +1478,7 @@ class Bce {
    * Навигация стрелками: схлопывание выделения, Shift+Arrows/Home/End,
    * Shift+Ctrl+Arrows (выделение по словам).
    * @param {KeyboardEvent} e
-   * @returns {boolean} — `true`, если событие обработано
+   * @returns {boolean} - `true`, если событие обработано
    * @private
    */
   _handleNavigation(e) {
@@ -1509,7 +1535,7 @@ class Bce {
    * (мобильные браузеры, где `keydown` для `>` / `<` может не срабатывать
    * и символ приходит через `insertText`).
    * @param {string} key — нажатый символ: `">"` или `"<"`
-   * @returns {boolean} — `true`, если сочетание обработано
+   * @returns {boolean} - `true`, если сочетание обработано
    * @private
    */
   _tryMoveShortcut(key) {
@@ -1689,7 +1715,7 @@ class Bce {
    * в начало выделения. Здесь курсор двигается от точки фокуса — как в
    * обычных редакторах кода.
    * @param {KeyboardEvent} e
-   * @returns {boolean} — `true`, если событие обработано (было выделение)
+   * @returns {boolean} - `true`, если событие обработано (было выделение)
    * @private
    */
   _handleArrowCollapse(e) {
@@ -1853,30 +1879,6 @@ class Bce {
 
     const anchor = this.getAnchor(cursor);
 
-    /**
-     * Ищет границу слова в тексте.
-     * @param {string} val       — текст строки
-     * @param {number} pos       — текущая позиция
-     * @param {number} direction — `1` (вперёд) или `-1` (назад)
-     * @returns {number}
-     */
-    const findWordBoundary = (val, pos, direction) => {
-      const len = val.length;
-      if (direction > 0) {
-        let i = pos;
-        while (i < len && /\s/.test(val[i])) i++;
-        while (i < len && !/\s/.test(val[i])) i++;
-        return i;
-      } else {
-        let i = pos;
-        if (i > 0) i--;
-        while (i > 0 && /\s/.test(val[i])) i--;
-        while (i > 0 && !/\s/.test(val[i])) i--;
-        if (i === 0 && !/\s/.test(val[0])) return 0;
-        return i > 0 ? i + 1 : 0;
-      }
-    };
-
     const moving = this.getFocus(cursor);
     /**
      * @param {number} mLn
@@ -1905,7 +1907,7 @@ class Bce {
       if (mOffset > 0) {
         setCursorAndReturn(
           mLine,
-          findWordBoundary(this.lines[mLine].val, mOffset, -1),
+          this.findWordBoundary(this.lines[mLine].val, mOffset, -1),
         );
       } else if (mLine > 0) {
         const prevLine = mLine - 1;
@@ -1921,7 +1923,7 @@ class Bce {
       if (mOffset < lineLen) {
         setCursorAndReturn(
           mLine,
-          findWordBoundary(this.lines[mLine].val, mOffset, 1),
+          this.findWordBoundary(this.lines[mLine].val, mOffset, 1),
         );
       } else if (mLine < this.lines.length - 1) {
         setCursorAndReturn(mLine + 1, 0);
