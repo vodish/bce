@@ -18,8 +18,32 @@
 
 /**
  * @typedef {Object} BceHistorySnapshot
- * @property {Rec[]}          lines  - снимок всех строк
- * @property {BceCursor|null} cursor - снимок позиции курсора
+ * @property {Rec[]}          lines  - полный снимок всех строк (база истории)
+ * @property {BceCursor|null} cursor - курсор состояния базы
+ */
+
+/**
+ * Элементарная операция над массивом строк модели.
+ *
+ * @typedef {Object} BcePatchOp
+ * @property {"insert"|"delete"|"replace"|"setLines"} type
+ * @property {number}    [index] - индекс строки (insert / delete / replace)
+ * @property {number}    [count] - число удаляемых строк (delete)
+ * @property {Rec|Rec[]} [lines] - строки: новые (insert), заменяющие (replace)
+ *                                 или весь документ (setLines)
+ */
+
+/**
+ * Запись истории: пара «вперёд/назад» + курсоры «до/после».
+ * forward и inverse применяются как обычные списки операций:
+ * inverse построен в порядке, обратном forward.
+ *
+ * @typedef {Object} BcePatchEntry
+ * @property {BcePatchOp[]}   forward      - операции «вперёд» (redo)
+ * @property {BcePatchOp[]}   inverse      - обратные операции (undo),
+ *                                           содержат удалённые/заменённые строки
+ * @property {BceCursor|null} cursorBefore - курсор до применения forward
+ * @property {BceCursor|null} cursorAfter  - курсор после применения forward
  */
 
 /**
@@ -134,11 +158,22 @@ class Bce {
     this.seq = 0;
     /** @type {Rec[]} */
     this.lines = [];
-    /** @type {BceHistorySnapshot[]} */
+    /**
+     * База истории («якорь»): полный снимок, поверх которого живёт стек
+     * патчей. Периодически «схлопывается» в _compactHistory(), чтобы память
+     * не росла линейно на больших документах.
+     * @type {BceHistorySnapshot | null}
+     */
+    this._baseSnapshot = null;
+    /** @type {BcePatchEntry[]} - стек патчей поверх базы */
     this.history = [];
-    /** @type {number} */
+    /**
+     * Указатель в стеке патчей: состояние = база + history[0..historyIndex].
+     * `-1` - текущее состояние совпадает с базой.
+     * @type {number}
+     */
     this.historyIndex = -1;
-    /** @type {number} */
+    /** @type {number} - максимальная глубина «прошлого» до компакции базы */
     this.maxHistory = 200;
     /** @type {boolean} */
     this.ignoreNextInput = false;
@@ -210,7 +245,7 @@ class Bce {
     } else {
       this.addLine("");
       this.render();
-      this.pushHistory(null);
+      this._resetHistoryBase();
     }
 
     // Маркер «контейнер занят» для защиты от двойной инициализации
@@ -233,6 +268,7 @@ class Bce {
     );
     delete (/** @type {any} */ (this.container).__bce);
     this.lines = [];
+    this._baseSnapshot = null;
     this.history = [];
     this.historyIndex = -1;
     this._onChangeCallback = null;
@@ -258,6 +294,9 @@ class Bce {
    * После замены курсор устанавливается в начало документа (DOM-выделение
    * после `render()` указывало на старые узлы).
    *
+   * Замена документа целиком - спец-операция истории (`setLines`): в патч
+   * пишутся полные копии «до/после». Операция редкая, O(N) допустим.
+   *
    * @param {string} text
    * @param {Object}   [opts]
    * @param {boolean}  [opts.resetHistory=false] - очистить историю undo/redo
@@ -266,18 +305,25 @@ class Bce {
    * @returns {void}
    */
   setText(text, { resetHistory = false } = {}) {
+    const oldLines = this.lines.map((l) => ({ id: l.id, val: l.val }));
     this.lines = [];
     this.seq = 0;
     text.split("\n").forEach((p) => this.addLine(p));
+    const setOp = {
+      type: "setLines",
+      lines: this.lines.map((l) => ({ id: l.id, val: l.val })),
+    };
     this.render();
-    this.setCursor({ begLn: 0, begCol: 0, endLn: 0, endCol: 0 });
+    const startCursor = { begLn: 0, begCol: 0, endLn: 0, endCol: 0 };
+    this.setCursor(startCursor);
     this._selDesiredCol = undefined;
     if (resetHistory) {
-      this.history = [];
-      this.historyIndex = -1;
+      this._resetHistoryBase();
+    } else {
+      this._pushEntry([setOp], startCursor, [
+        { type: "setLines", lines: oldLines },
+      ]);
     }
-    // Курсор ещё не «прижился» к новому содержимому - снимок без курсора
-    this.pushHistory(null);
     this._fireOnChange();
   }
 
@@ -287,24 +333,34 @@ class Bce {
    * После замены курсор устанавливается в начало документа (DOM-выделение
    * после `render()` указывало на старые узлы).
    *
+   * Замена документа целиком - спец-операция истории (`setLines`): в патч
+   * пишутся полные копии «до/после». Операция редкая, O(N) допустим.
+   *
    * @param {Array<{ id: number, val: string }>} lines
    * @param {Object}   [opts]
    * @param {boolean}  [opts.resetHistory=false] - очистить историю undo/redo
    * @returns {void}
    */
   setLines(lines = [], { resetHistory = false } = {}) {
+    const oldLines = this.lines.map((l) => ({ id: l.id, val: l.val }));
     this.lines = lines.map(({ id, val }) => ({ id, val }));
     let maxId = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
     this.seq = Math.max(this.seq, maxId);
+    const setOp = {
+      type: "setLines",
+      lines: this.lines.map((l) => ({ id: l.id, val: l.val })),
+    };
     this.render();
-    this.setCursor({ begLn: 0, begCol: 0, endLn: 0, endCol: 0 });
+    const startCursor = { begLn: 0, begCol: 0, endLn: 0, endCol: 0 };
+    this.setCursor(startCursor);
     this._selDesiredCol = undefined;
     if (resetHistory) {
-      this.history = [];
-      this.historyIndex = -1;
+      this._resetHistoryBase();
+    } else {
+      this._pushEntry([setOp], startCursor, [
+        { type: "setLines", lines: oldLines },
+      ]);
     }
-    // Курсор ещё не «прижился» к новому содержимому - снимок без курсора
-    this.pushHistory(null);
     this._fireOnChange();
   }
 
@@ -656,7 +712,8 @@ class Bce {
 
   /**
    * Перерисовывает одну строку без полного render() (инкрементальный рендер).
-   * Обновляет HTML и переиндексирует текстовые узлы строки в _nodeMap.
+   * Обновляет HTML, dataset (lineId/lineIndex), гуттер и переиндексирует
+   * текстовые узлы строки в _nodeMap.
    * @param {number} idx - индекс строки в модели
    * @returns {void}
    */
@@ -666,8 +723,112 @@ class Bce {
       this.content.children[idx]
     );
     if (!div || !line) return;
+    div.dataset.lineId = String(line.id);
+    div.dataset.lineIndex = String(idx);
     div.innerHTML = line.val === "" ? "<br>" : this.highlight(line.val);
+    const g = /** @type {HTMLElement | undefined} */ (
+      this.gutter.children[idx]
+    );
+    if (g) {
+      g.textContent = String(this.options.showRecId ? line.id : idx + 1);
+    }
     this._indexLineNodes(div, idx);
+  }
+
+  /**
+   * Точечный рендер патча: обновляет DOM только для затронутых строк,
+   * вместо пересоздания content.innerHTML (критично для undo/redo на
+   * документах в десятки тысяч строк).
+   *
+   * replace → renderLine(); insert/delete → точечная вставка/удаление
+   * DOM-узлов; setLines → полный render().
+   *
+   * @param {BcePatchOp[]} ops
+   * @returns {void}
+   * @private
+   */
+  _renderPatch(ops) {
+    // Без DOM (юнит-тесты модели) - рендер пропускается
+    if (!this.content || !this.gutter) return;
+    let structuralFrom = -1;
+
+    for (const op of ops) {
+      if (op.type === "replace") {
+        const n = Array.isArray(op.lines) ? op.lines.length : 1;
+        for (let i = 0; i < n; i++) this.renderLine(op.index + i);
+      } else if (op.type === "insert") {
+        const lines = Array.isArray(op.lines) ? op.lines : [op.lines];
+        const refLine = /** @type {Element | null} */ (
+          this.content.children[op.index] ?? null
+        );
+        const refGutter = /** @type {Element | null} */ (
+          this.gutter.children[op.index] ?? null
+        );
+        for (let i = 0; i < lines.length; i++) {
+          const div = document.createElement("div");
+          div.className = "bce-line";
+          const gi = document.createElement("div");
+          gi.className = "bce-gutter-line";
+          this.content.insertBefore(div, refLine);
+          this.gutter.insertBefore(gi, refGutter);
+          this.renderLine(op.index + i);
+        }
+        structuralFrom =
+          structuralFrom < 0 ? op.index : Math.min(structuralFrom, op.index);
+      } else if (op.type === "delete") {
+        for (let i = 0; i < op.count; i++) {
+          this.content.children[op.index]?.remove();
+          this.gutter.children[op.index]?.remove();
+        }
+        structuralFrom =
+          structuralFrom < 0 ? op.index : Math.min(structuralFrom, op.index);
+      } else {
+        // setLines - замена документа целиком
+        this.render();
+        return;
+      }
+    }
+
+    if (structuralFrom >= 0) this._reindexTail(structuralFrom);
+    this.updateActiveLine();
+  }
+
+  /**
+   * Обновляет `dataset.lineIndex`, номера в гуттере и (для небольшого хвоста)
+   * индекс текстовых узлов после структурного изменения (insert/delete строк).
+   * Для большого хвоста переиндексация дорога - помечаем _nodeMap устаревшим:
+   * getCursor() пойдёт резервным путём через TreeWalker (корректно, но
+   * медленнее) до ближайшего полного render().
+   * @param {number} from - индекс первой затронутой строки
+   * @returns {void}
+   * @private
+   */
+  _reindexTail(from) {
+    const total = this.lines.length;
+    for (let i = from; i < total; i++) {
+      const div = /** @type {HTMLElement | undefined} */ (
+        this.content.children[i]
+      );
+      if (div) div.dataset.lineIndex = String(i);
+      const g = /** @type {HTMLElement | undefined} */ (
+        this.gutter.children[i]
+      );
+      if (g && this.lines[i]) {
+        g.textContent = String(
+          this.options.showRecId ? this.lines[i].id : i + 1,
+        );
+      }
+    }
+    if (total - from <= 2000) {
+      for (let i = from; i < total; i++) {
+        const div = /** @type {HTMLElement | undefined} */ (
+          this.content.children[i]
+        );
+        if (div instanceof HTMLElement) this._indexLineNodes(div, i);
+      }
+    } else {
+      this._nodeMapDirty = true;
+    }
   }
 
   /**
@@ -996,83 +1157,301 @@ class Bce {
   }
 
   /* ================================================================
-  История изменений (undo / redo)
+  История изменений (undo / redo) - патчи вместо полных снимков
   ================================================================= */
 
   /**
-   * Применяет изменение: рендер, установка курсора, снимок в историю.
-   * Курсор передаётся явно, чтобы снимок истории содержал позицию,
-   * актуальную для данного изменения (а не случайное DOM-выделение).
-   * @param {BceCursor} [cursor]
+   * Сбрасывает историю и фиксирует текущее состояние модели как базовый
+   * снимок («якорь»). Стек патчей поверх базы становится пустым.
    * @returns {void}
+   * @private
    */
-  commitChange(cursor) {
-    this.render();
-    if (cursor) this.setCursor(cursor);
-    this.pushHistory(cursor);
-    this._fireOnChange();
-  }
-
-  /**
-   * Сохраняет текущее состояние в стек истории.
-   *
-   * Курсор нужно передавать явно, когда он известен (например, из
-   * `commitChange`): после `render()` DOM-выделение может быть невалидным
-   * и `getCursor()` вернёт чужую позицию.
-   *
-   * `cursor = null` - снимок без курсора (содержимое заменено целиком,
-   * позиция ещё не установлена, например в `setText` / `setLines`).
-   * `cursor = undefined` - курсор читается из DOM (`getCursor()`), это
-   * корректно после `restoreSnapshot`, где `setCursor` уже применён.
-   *
-   * @param {BceCursor | null} [cursor] - снимок курсора (`undefined` - читать из DOM, `null` - без курсора)
-   * @returns {void}
-   */
-  pushHistory(cursor = undefined) {
-    this.history = this.history.slice(0, this.historyIndex + 1);
-    this.history.push({
+  _resetHistoryBase() {
+    this._baseSnapshot = {
       lines: this.lines.map((l) => ({ id: l.id, val: l.val })),
-      cursor: cursor ?? this.getCursor(),
-    });
-    if (this.history.length > this.maxHistory) this.history.shift();
-    this.historyIndex = this.history.length - 1;
+      cursor: null,
+    };
+    this.history = [];
+    this.historyIndex = -1;
   }
 
   /**
-   * Восстанавливает снимок из истории.
-   * @param {BceHistorySnapshot} snap
+   * Строит обратные операции для набора forward-операций.
+   *
+   * Вызывается ДО применения forward: удаляемые/заменяемые строки копируются
+   * в inverse (delete сам по себе необратим). Инверсии возвращаются в
+   * порядке, обратном forward, и применяются как обычный список операций.
+   *
+   * @param {BcePatchOp[]} ops - forward-операции (ещё не применённые)
+   * @returns {BcePatchOp[]} - обратные операции
+   * @private
+   */
+  _invertOps(ops) {
+    /** @type {BcePatchOp[]} */
+    const inv = [];
+    for (const op of ops) {
+      switch (op.type) {
+        case "insert": {
+          const n = Array.isArray(op.lines) ? op.lines.length : 1;
+          inv.push({ type: "delete", index: op.index, count: n });
+          break;
+        }
+        case "delete": {
+          const removed = this.lines
+            .slice(op.index, op.index + op.count)
+            .map((l) => ({ id: l.id, val: l.val }));
+          inv.push({ type: "insert", index: op.index, lines: removed });
+          break;
+        }
+        case "replace": {
+          const n = Array.isArray(op.lines) ? op.lines.length : 1;
+          inv.push({
+            type: "replace",
+            index: op.index,
+            lines: this.lines
+              .slice(op.index, op.index + n)
+              .map((l) => ({ id: l.id, val: l.val })),
+          });
+          break;
+        }
+        default: {
+          // setLines - полный откат документа
+          inv.push({
+            type: "setLines",
+            lines: this.lines.map((l) => ({ id: l.id, val: l.val })),
+          });
+          break;
+        }
+      }
+    }
+    // Инверсия последней операции применяется первой
+    return inv.reverse();
+  }
+
+  /**
+   * Применяет операции к переданному массиву строк (мутирует его).
+   * Строки из операций клонируются: модель никогда не делит объекты Rec
+   * с патчами - иначе поздние правки испортили бы сохранённые операции.
+   * @param {Rec[]} lines
+   * @param {BcePatchOp[]} ops
+   * @returns {Rec[]} - тот же массив (для записи `this.lines = ...`)
+   * @private
+   */
+  _applyOpsTo(lines, ops) {
+    for (const op of ops) {
+      switch (op.type) {
+        case "insert": {
+          const arr = (Array.isArray(op.lines) ? op.lines : [op.lines]).map(
+            (l) => ({ id: l.id, val: l.val }),
+          );
+          lines.splice(op.index, 0, ...arr);
+          break;
+        }
+        case "delete": {
+          lines.splice(op.index, op.count);
+          break;
+        }
+        case "replace": {
+          const arr = Array.isArray(op.lines) ? op.lines : [op.lines];
+          for (let i = 0; i < arr.length; i++) {
+            lines[op.index + i] = { id: arr[i].id, val: arr[i].val };
+          }
+          break;
+        }
+        default: {
+          // setLines - замена документа целиком
+          lines.length = 0;
+          for (const l of op.lines ?? []) {
+            lines.push({ id: l.id, val: l.val });
+          }
+          break;
+        }
+      }
+    }
+    return lines;
+  }
+
+  /**
+   * Сравнивает два массива строк и возвращает операции, переводящие
+   * oldLines в newLines. Используется в onInput, где DOM уже изменён
+   * браузером и модель нужно синхронизировать через патч.
+   * @param {Rec[]} oldLines
+   * @param {Rec[]} newLines
+   * @returns {BcePatchOp[]}
+   */
+  diffLines(oldLines, newLines) {
+    /** @type {BcePatchOp[]} */
+    const ops = [];
+    const n = oldLines.length;
+    const m = newLines.length;
+
+    // Общий префикс и суффикс (по id и тексту) не участвуют в диффе
+    let pre = 0;
+    while (
+      pre < n &&
+      pre < m &&
+      oldLines[pre].id === newLines[pre].id &&
+      oldLines[pre].val === newLines[pre].val
+    ) {
+      pre++;
+    }
+    let suf = 0;
+    while (
+      suf < n - pre &&
+      suf < m - pre &&
+      oldLines[n - 1 - suf].id === newLines[m - 1 - suf].id &&
+      oldLines[n - 1 - suf].val === newLines[m - 1 - suf].val
+    ) {
+      suf++;
+    }
+
+    const oldMid = n - pre - suf;
+    const newMid = m - pre - suf;
+    const overlap = Math.min(oldMid, newMid);
+
+    if (overlap > 0) {
+      /** @type {Rec[]} */
+      const repl = [];
+      let changed = false;
+      for (let i = 0; i < overlap; i++) {
+        const o = oldLines[pre + i];
+        const w = newLines[pre + i];
+        if (o.id !== w.id || o.val !== w.val) changed = true;
+        repl.push({ id: w.id, val: w.val });
+      }
+      if (changed) {
+        ops.push({ type: "replace", index: pre, lines: repl });
+      }
+    }
+
+    if (newMid > oldMid) {
+      ops.push({
+        type: "insert",
+        index: pre + oldMid,
+        lines: newLines
+          .slice(pre + oldMid, pre + newMid)
+          .map((l) => ({ id: l.id, val: l.val })),
+      });
+    } else if (oldMid > newMid) {
+      ops.push({
+        type: "delete",
+        index: pre + newMid,
+        count: oldMid - newMid,
+      });
+    }
+
+    return ops;
+  }
+
+  /**
+   * Добавляет патч в историю: обрезает «хвост redo» (новые изменения его
+   * отменяют), пишет пару forward/inverse с курсорами «до/после» и при
+   * необходимости уплотняет базу (компакция).
+   *
+   * Курсор «до» берётся из предыдущей записи стека (или из базы) - это
+   * надёжнее чтения DOM, которое могло уже устареть.
+   *
+   * @param {BcePatchOp[]} forwardOps
+   * @param {BceCursor | null} cursorAfter - курсор после применения forward
+   * @param {BcePatchOp[]} [inverse] - заранее построенный inverse
+   * @returns {void}
+   * @private
+   */
+  _pushEntry(forwardOps, cursorAfter, inverse = null) {
+    if (!inverse) inverse = this._invertOps(forwardOps);
+    const cursorBefore =
+      this.historyIndex >= 0
+        ? this.history[this.historyIndex].cursorAfter
+        : this._baseSnapshot
+          ? this._baseSnapshot.cursor
+          : null;
+
+    if (this.historyIndex < this.history.length - 1) {
+      this.history = this.history.slice(0, this.historyIndex + 1);
+    }
+    this.history.push({
+      forward: forwardOps,
+      inverse,
+      cursorBefore,
+      cursorAfter: cursorAfter ?? null,
+    });
+    this.historyIndex = this.history.length - 1;
+
+    // Компакция: глубина «прошлого» не превышает maxHistory
+    if (this.historyIndex >= this.maxHistory) this._compactHistory();
+  }
+
+  /**
+   * Компакция: применяет все патчи «прошлого» к базовому снимку и делает
+   * результат новой базой. «Хвост redo» сохраняется - его патчи остаются
+   * валидны поверх новой базы. Держит глубину прошлого в пределах maxHistory,
+   * чтобы память не росла линейно (25 000 строк × 200 патчей).
+   * @returns {void}
+   * @private
+   */
+  _compactHistory() {
+    if (!this._baseSnapshot || this.historyIndex < 0) return;
+    const lines = this._baseSnapshot.lines.slice();
+    let cursor = this._baseSnapshot.cursor;
+    for (let i = 0; i <= this.historyIndex; i++) {
+      this._applyOpsTo(lines, this.history[i].forward);
+      cursor = this.history[i].cursorAfter ?? cursor;
+    }
+    this._baseSnapshot = { lines, cursor };
+    this.history = this.history.slice(this.historyIndex + 1);
+    this.historyIndex = -1;
+  }
+
+  /**
+   * Применяет набор forward-операций: строит inverse-патч, применяет
+   * операции к модели, точечно рендерит изменения, пишет патч в историю.
+   *
+   * Все мутации модели должны идти через этот метод (вместо прямой правки
+   * `this.lines[i].val = ...`) - иначе undo/redo не смогут восстановить
+   * состояние (в т.ч. id строк, критичные для `dataset.lineId` в `onInput`).
+   *
+   * @param {BcePatchOp[]} forwardOps - операции «вперёд»
+   * @param {BceCursor | null} [cursor] - курсор после изменения (null - не трогать)
    * @returns {void}
    */
-  restoreSnapshot(snap) {
-    this.lines = snap.lines.map((l) => ({ id: l.id, val: l.val }));
-    this.render();
-    if (snap.cursor) {
-      const cursor = snap.cursor;
-      requestAnimationFrame(() => this.setCursor(cursor));
-    }
+  commitChange(forwardOps, cursor = null) {
+    if (!forwardOps.length) return;
+    const inverse = this._invertOps(forwardOps);
+    this.lines = this._applyOpsTo(this.lines, forwardOps);
+    this._renderPatch(forwardOps);
+    if (cursor) this.setCursor(cursor);
+    this._pushEntry(forwardOps, cursor, inverse);
     this._fireOnChange();
   }
 
   /**
-   * Откат на один шаг.
+   * Откат на один шаг: применение inverse-патча (курсор - cursorBefore).
    * @returns {void}
    */
   undo() {
-    if (this.historyIndex > 0) {
-      this.historyIndex--;
-      this.restoreSnapshot(this.history[this.historyIndex]);
-    }
+    if (this.historyIndex < 0) return;
+    const entry = this.history[this.historyIndex];
+    this.historyIndex--;
+    this.lines = this._applyOpsTo(this.lines, entry.inverse);
+    this._renderPatch(entry.inverse);
+    const cursor = entry.cursorBefore;
+    if (cursor) requestAnimationFrame(() => this.setCursor(cursor));
+    this._fireOnChange();
   }
 
   /**
-   * Повтор на один шаг.
+   * Повтор на один шаг: повторное применение forward-патча (курсор - cursorAfter).
    * @returns {void}
    */
   redo() {
-    if (this.historyIndex < this.history.length - 1) {
-      this.historyIndex++;
-      this.restoreSnapshot(this.history[this.historyIndex]);
-    }
+    if (this.historyIndex >= this.history.length - 1) return;
+    this.historyIndex++;
+    const entry = this.history[this.historyIndex];
+    this.lines = this._applyOpsTo(this.lines, entry.forward);
+    this._renderPatch(entry.forward);
+    const cursor = entry.cursorAfter;
+    if (cursor) requestAnimationFrame(() => this.setCursor(cursor));
+    this._fireOnChange();
   }
 
   /* ================================================================
@@ -1157,25 +1536,56 @@ class Bce {
     )
       return;
 
+    /** @type {BcePatchOp[]} */
+    const ops = [];
+    /** @type {string} */
+    let newVal;
+
     if (cursor.begLn === cursor.endLn) {
       const line = this.lines[cursor.begLn];
-      line.val =
+      newVal =
         line.val.substring(0, cursor.begCol) +
         line.val.substring(cursor.endCol);
+      ops.push({
+        type: "replace",
+        index: cursor.begLn,
+        lines: [{ id: line.id, val: newVal }],
+      });
     } else {
       const first = this.lines[cursor.begLn];
       const last = this.lines[cursor.endLn];
-      first.val =
+      newVal =
         first.val.substring(0, cursor.begCol) +
         last.val.substring(cursor.endCol);
-      this.lines.splice(cursor.begLn + 1, cursor.endLn - cursor.begLn);
+      ops.push({
+        type: "replace",
+        index: cursor.begLn,
+        lines: [{ id: first.id, val: newVal }],
+      });
+      ops.push({
+        type: "delete",
+        index: cursor.begLn + 1,
+        count: cursor.endLn - cursor.begLn,
+      });
     }
 
-    if (this.lines.length === 1 && this.lines[0].val === "") {
-      this.lines[0].id = this.newId();
+    // Каноническая форма пустого документа: единственная пустая строка
+    // получает новый id
+    const deletedCount =
+      cursor.begLn === cursor.endLn ? 0 : cursor.endLn - cursor.begLn;
+    if (
+      this.lines.length - deletedCount === 1 &&
+      cursor.begLn === 0 &&
+      newVal === ""
+    ) {
+      ops.push({
+        type: "replace",
+        index: 0,
+        lines: [{ id: this.newId(), val: "" }],
+      });
     }
 
-    this.commitChange({
+    this.commitChange(ops, {
       begLn: cursor.begLn,
       begCol: cursor.begCol,
       endLn: cursor.begLn,
@@ -1198,27 +1608,41 @@ class Bce {
     const before = currentLine.val.substring(0, c.begCol);
     const after = currentLine.val.substring(c.endCol);
 
+    /** @type {BcePatchOp[]} */
+    const ops = [];
+
     if (parts.length === 1) {
-      currentLine.val = before + parts[0] + after;
-      this.commitChange({
+      ops.push({
+        type: "replace",
+        index: c.begLn,
+        lines: [{ id: currentLine.id, val: before + parts[0] + after }],
+      });
+      const col = before.length + parts[0].length;
+      this.commitChange(ops, {
         begLn: c.begLn,
-        begCol: before.length + parts[0].length,
+        begCol: col,
         endLn: c.begLn,
-        endCol: before.length + parts[0].length,
+        endCol: col,
       });
     } else {
-      currentLine.val = before + parts[0];
+      ops.push({
+        type: "replace",
+        index: c.begLn,
+        lines: [{ id: currentLine.id, val: before + parts[0] }],
+      });
+      /** @type {Rec[]} */
+      const inserted = [];
       for (let i = 1; i < parts.length - 1; i++) {
-        this.addLine(parts[i], c.begLn + i);
+        inserted.push({ id: this.newId(), val: parts[i] });
       }
-      const lastLine = {
+      inserted.push({
         id: this.newId(),
         val: parts[parts.length - 1] + after,
-      };
-      this.lines.splice(c.begLn + parts.length - 1, 0, lastLine);
+      });
+      ops.push({ type: "insert", index: c.begLn + 1, lines: inserted });
       const finalLine = c.begLn + parts.length - 1;
       const finalOffset = parts[parts.length - 1].length;
-      this.commitChange({
+      this.commitChange(ops, {
         begLn: finalLine,
         begCol: finalOffset,
         endLn: finalLine,
@@ -1297,10 +1721,9 @@ class Bce {
     const cursor = this.getCursor();
     if (!cursor) return;
     const idx = cursor.begLn;
-    const copy = { id: this.newId(), val: this.lines[idx].val };
     const newIdx = dir > 0 ? idx + 1 : idx;
-    this.lines.splice(newIdx, 0, copy);
-    this.commitChange({
+    const copy = { id: this.newId(), val: this.lines[idx].val };
+    this.commitChange([{ type: "insert", index: newIdx, lines: [copy] }], {
       begLn: newIdx,
       begCol: cursor.begCol,
       endLn: newIdx,
@@ -1310,6 +1733,7 @@ class Bce {
 
   /**
    * Перемещает текущую строку вверх или вниз.
+   * Перестановка выражается двумя replace - унифицировано с патч-моделью.
    * @param {number} dir - `1` (вниз) или `-1` (вверх)
    * @returns {void}
    */
@@ -1319,16 +1743,26 @@ class Bce {
     const idx = cursor.begLn;
     const target = idx + dir;
     if (target < 0 || target >= this.lines.length) return;
-    [this.lines[idx], this.lines[target]] = [
-      this.lines[target],
-      this.lines[idx],
-    ];
-    this.commitChange({
-      begLn: target,
-      begCol: cursor.begCol,
-      endLn: target,
-      endCol: cursor.endCol,
-    });
+    this.commitChange(
+      [
+        {
+          type: "replace",
+          index: idx,
+          lines: [{ id: this.lines[target].id, val: this.lines[target].val }],
+        },
+        {
+          type: "replace",
+          index: target,
+          lines: [{ id: this.lines[idx].id, val: this.lines[idx].val }],
+        },
+      ],
+      {
+        begLn: target,
+        begCol: cursor.begCol,
+        endLn: target,
+        endCol: cursor.endCol,
+      },
+    );
   }
 
   /* ================================================================
@@ -1359,19 +1793,28 @@ class Bce {
     const cursorPos = expansion.indexOf("|");
     const clean = expansion.replace("|", "");
     const startReplace = cursor.begCol - abbr.length;
-    line.val =
+    const newVal =
       line.val.substring(0, startReplace) +
       clean +
       line.val.substring(cursor.begCol);
     const newOffset =
       startReplace + (cursorPos >= 0 ? cursorPos : clean.length);
 
-    this.commitChange({
-      begLn: cursor.begLn,
-      begCol: newOffset,
-      endLn: cursor.begLn,
-      endCol: newOffset,
-    });
+    this.commitChange(
+      [
+        {
+          type: "replace",
+          index: cursor.begLn,
+          lines: [{ id: line.id, val: newVal }],
+        },
+      ],
+      {
+        begLn: cursor.begLn,
+        begCol: newOffset,
+        endLn: cursor.begLn,
+        endCol: newOffset,
+      },
+    );
     return true;
   }
 
@@ -1556,16 +1999,27 @@ class Bce {
     const target = idx + dir;
     if (target < 0 || target >= this.lines.length) return true;
 
-    [this.lines[idx], this.lines[target]] = [
-      this.lines[target],
-      this.lines[idx],
-    ];
-    this.commitChange({
-      begLn: target,
-      begCol: cursor.begCol,
-      endLn: target,
-      endCol: cursor.endCol,
-    });
+    // Перестановка двух строк - два replace (унифицировано с actionMove)
+    this.commitChange(
+      [
+        {
+          type: "replace",
+          index: idx,
+          lines: [{ id: this.lines[target].id, val: this.lines[target].val }],
+        },
+        {
+          type: "replace",
+          index: target,
+          lines: [{ id: this.lines[idx].id, val: this.lines[idx].val }],
+        },
+      ],
+      {
+        begLn: target,
+        begCol: cursor.begCol,
+        endLn: target,
+        endCol: cursor.endCol,
+      },
+    );
     return true;
   }
 
@@ -1595,30 +2049,56 @@ class Bce {
       ) {
         e.preventDefault();
         this.ignoreNextInput = true;
-        if (this.lines.length === 1) {
-          this.lines[0] = { id: this.newId(), val: "" };
-        } else {
-          this.lines[cursor.begLn].val = "";
-        }
-        this.commitChange({
-          begLn: cursor.begLn,
-          begCol: 0,
-          endLn: cursor.begLn,
-          endCol: 0,
-        });
+        const line = this.lines[cursor.begLn];
+        // Каноническая форма пустого документа: новый id единственной строки
+        const id = this.lines.length === 1 ? this.newId() : line.id;
+        this.commitChange(
+          [
+            {
+              type: "replace",
+              index: cursor.begLn,
+              lines: [{ id, val: "" }],
+            },
+          ],
+          {
+            begLn: cursor.begLn,
+            begCol: 0,
+            endLn: cursor.begLn,
+            endCol: 0,
+          },
+        );
         return;
       }
       if (cursor.endCol === 0 && cursor.endLn > cursor.begLn) {
         e.preventDefault();
         this.ignoreNextInput = true;
         const deleteCount = cursor.endLn - cursor.begLn;
+        /** @type {BcePatchOp[]} */
+        const ops = [];
         if (this.lines.length - deleteCount === 0) {
-          this.lines = [{ id: this.newId(), val: "" }];
+          // Удалены все строки - заменяем документ одной пустой строкой
+          ops.push({
+            type: "delete",
+            index: 0,
+            count: this.lines.length,
+          });
+          ops.push({
+            type: "insert",
+            index: 0,
+            lines: [{ id: this.newId(), val: "" }],
+          });
         } else {
-          this.lines.splice(cursor.begLn, deleteCount);
+          ops.push({
+            type: "delete",
+            index: cursor.begLn,
+            count: deleteCount,
+          });
         }
-        const targetLine = Math.min(cursor.begLn, this.lines.length - 1);
-        this.commitChange({
+        const targetLine = Math.min(
+          cursor.begLn,
+          this.lines.length - deleteCount - 1,
+        );
+        this.commitChange(ops, {
           begLn: targetLine,
           begCol: 0,
           endLn: targetLine,
@@ -1646,19 +2126,21 @@ class Bce {
     if (currentLine.val === "" && this.lines.length > 1) {
       e.preventDefault();
       this.ignoreNextInput = true;
-      this.lines.splice(currentLineIdx, 1);
       let newLineIdx = currentLineIdx;
       let newOffset = 0;
       if (currentLineIdx > 0) {
         newLineIdx = currentLineIdx - 1;
         newOffset = this.lines[newLineIdx].val.length;
       }
-      this.commitChange({
-        begLn: newLineIdx,
-        begCol: newOffset,
-        endLn: newLineIdx,
-        endCol: newOffset,
-      });
+      this.commitChange(
+        [{ type: "delete", index: currentLineIdx, count: 1 }],
+        {
+          begLn: newLineIdx,
+          begCol: newOffset,
+          endLn: newLineIdx,
+          endCol: newOffset,
+        },
+      );
       return;
     }
 
@@ -1671,14 +2153,24 @@ class Bce {
         const prevLine = this.lines[cursor.begLn - 1];
         const currLine = this.lines[cursor.begLn];
         const prevLen = prevLine.val.length;
-        prevLine.val += currLine.val;
-        this.lines.splice(cursor.begLn, 1);
-        this.commitChange({
-          begLn: cursor.begLn - 1,
-          begCol: prevLen,
-          endLn: cursor.begLn - 1,
-          endCol: prevLen,
-        });
+        this.commitChange(
+          [
+            {
+              type: "replace",
+              index: cursor.begLn - 1,
+              lines: [
+                { id: prevLine.id, val: prevLine.val + currLine.val },
+              ],
+            },
+            { type: "delete", index: cursor.begLn, count: 1 },
+          ],
+          {
+            begLn: cursor.begLn - 1,
+            begCol: prevLen,
+            endLn: cursor.begLn - 1,
+            endCol: prevLen,
+          },
+        );
       }
       // Ветка 5: Delete в конце строки (не последней) - приклеиваем следующую
       // строку к текущей; курсор в точку склейки.
@@ -1692,14 +2184,22 @@ class Bce {
         const currLine = this.lines[cursor.begLn];
         const nextLine = this.lines[cursor.begLn + 1];
         const currLen = currLine.val.length;
-        currLine.val += nextLine.val;
-        this.lines.splice(cursor.begLn + 1, 1);
-        this.commitChange({
-          begLn: cursor.begLn,
-          begCol: currLen,
-          endLn: cursor.begLn,
-          endCol: currLen,
-        });
+        this.commitChange(
+          [
+            {
+              type: "replace",
+              index: cursor.begLn,
+              lines: [{ id: currLine.id, val: currLine.val + nextLine.val }],
+            },
+            { type: "delete", index: cursor.begLn + 1, count: 1 },
+          ],
+          {
+            begLn: cursor.begLn,
+            begCol: currLen,
+            endLn: cursor.begLn,
+            endCol: currLen,
+          },
+        );
       }
     }
   }
@@ -1938,34 +2438,40 @@ class Bce {
 
     if (hasSelection && cursor.begLn === cursor.endLn && !shift) {
       const line = this.lines[cursor.begLn];
-
-      // Вырезаем выделенный кусок прямо в модели (без вызова commitChange)
-      line.val =
+      // Вырезаем выделенный кусок и вставляем пробелы до таб-стопа
+      const cut =
         line.val.substring(0, cursor.begCol) +
         line.val.substring(cursor.endCol);
-
       const col = cursor.begCol;
       const target = Math.ceil((col + 1) / tabSize) * tabSize;
       const add = " ".repeat(target - col);
-
-      line.val =
-        line.val.substring(0, cursor.begCol) +
-        add +
-        line.val.substring(cursor.begCol);
+      const newVal = cut.substring(0, col) + add + cut.substring(col);
 
       // Делаем ОДИН коммит для всей операции
-      this.commitChange({
-        begLn: cursor.begLn,
-        begCol: cursor.begCol + add.length,
-        endLn: cursor.begLn,
-        endCol: cursor.begCol + add.length,
-      });
+      this.commitChange(
+        [
+          {
+            type: "replace",
+            index: cursor.begLn,
+            lines: [{ id: line.id, val: newVal }],
+          },
+        ],
+        {
+          begLn: cursor.begLn,
+          begCol: cursor.begCol + add.length,
+          endLn: cursor.begLn,
+          endCol: cursor.begCol + add.length,
+        },
+      );
       return;
     }
 
     if (hasSelection) {
       const { begLn: beg, endLn: end } = cursor;
+      /** @type {number[]} */
       const deltas = [];
+      /** @type {Rec[]} */
+      const repl = [];
 
       if (shift) {
         for (let i = beg; i <= end; i++) {
@@ -1974,7 +2480,10 @@ class Bce {
             leading.length > 0
               ? Math.min(leading.length, leading.length % tabSize || tabSize)
               : 0;
-          this.lines[i].val = this.lines[i].val.substring(removeCount);
+          repl.push({
+            id: this.lines[i].id,
+            val: this.lines[i].val.substring(removeCount),
+          });
           deltas.push(-removeCount);
         }
       } else {
@@ -1983,17 +2492,20 @@ class Bce {
           const currentLen = leading.length;
           const target = Math.ceil((currentLen + 1) / tabSize) * tabSize;
           const add = " ".repeat(target - currentLen);
-          this.lines[i].val = add + this.lines[i].val;
+          repl.push({ id: this.lines[i].id, val: add + this.lines[i].val });
           deltas.push(add.length);
         }
       }
 
-      this.commitChange({
-        begLn: beg,
-        begCol: Math.max(0, cursor.begCol + deltas[0]),
-        endLn: end,
-        endCol: Math.max(0, cursor.endCol + deltas[deltas.length - 1]),
-      });
+      this.commitChange(
+        [{ type: "replace", index: beg, lines: repl }],
+        {
+          begLn: beg,
+          begCol: Math.max(0, cursor.begCol + deltas[0]),
+          endLn: end,
+          endCol: Math.max(0, cursor.endCol + deltas[deltas.length - 1]),
+        },
+      );
     } else {
       const line = this.lines[cursor.begLn];
       if (shift) {
@@ -2008,30 +2520,48 @@ class Bce {
         const spacesToRemove = cursor.begCol - prevTabStop;
         const removeCount = Math.min(spaceCount, spacesToRemove);
         if (removeCount > 0) {
-          line.val =
+          const newVal =
             beforeCursor.substring(0, beforeCursor.length - removeCount) +
             line.val.substring(cursor.begCol);
-          this.commitChange({
-            begLn: cursor.begLn,
-            begCol: cursor.begCol - removeCount,
-            endLn: cursor.begLn,
-            endCol: cursor.begCol - removeCount,
-          });
+          this.commitChange(
+            [
+              {
+                type: "replace",
+                index: cursor.begLn,
+                lines: [{ id: line.id, val: newVal }],
+              },
+            ],
+            {
+              begLn: cursor.begLn,
+              begCol: cursor.begCol - removeCount,
+              endLn: cursor.begLn,
+              endCol: cursor.begCol - removeCount,
+            },
+          );
         }
       } else {
         const col = cursor.begCol;
         const target = Math.ceil((col + 1) / tabSize) * tabSize;
         const add = " ".repeat(target - col);
-        line.val =
+        const newVal =
           line.val.substring(0, cursor.begCol) +
           add +
           line.val.substring(cursor.begCol);
-        this.commitChange({
-          begLn: cursor.begLn,
-          begCol: cursor.begCol + add.length,
-          endLn: cursor.begLn,
-          endCol: cursor.begCol + add.length,
-        });
+        this.commitChange(
+          [
+            {
+              type: "replace",
+              index: cursor.begLn,
+              lines: [{ id: line.id, val: newVal }],
+            },
+          ],
+          {
+            begLn: cursor.begLn,
+            begCol: cursor.begCol + add.length,
+            endLn: cursor.begLn,
+            endCol: cursor.begCol + add.length,
+          },
+        );
       }
     }
   }
@@ -2063,24 +2593,45 @@ class Bce {
     const indent = this.getLeadingSpaces(before);
 
     if (cursor.begCol === 0 && line.val !== "") {
-      const newLine = { id: this.newId(), val: "" };
-      this.lines.splice(cursor.begLn, 0, newLine);
-      this.commitChange({
-        begLn: cursor.begLn + 1,
-        begCol: 0,
-        endLn: cursor.begLn + 1,
-        endCol: 0,
-      });
+      // Пустая строка сверху; существующая строка сохраняет id
+      this.commitChange(
+        [
+          {
+            type: "insert",
+            index: cursor.begLn,
+            lines: [{ id: this.newId(), val: "" }],
+          },
+        ],
+        {
+          begLn: cursor.begLn + 1,
+          begCol: 0,
+          endLn: cursor.begLn + 1,
+          endCol: 0,
+        },
+      );
     } else {
-      line.val = before;
-      const newLine = { id: this.newId(), val: indent + after };
-      this.lines.splice(cursor.begLn + 1, 0, newLine);
-      this.commitChange({
-        begLn: cursor.begLn + 1,
-        begCol: indent.length,
-        endLn: cursor.begLn + 1,
-        endCol: indent.length,
-      });
+      // Разбивка: replace текущей строки + insert новой (с сохранением
+      // id текущей строки - важно для матчинга dataset.lineId в onInput)
+      this.commitChange(
+        [
+          {
+            type: "replace",
+            index: cursor.begLn,
+            lines: [{ id: line.id, val: before }],
+          },
+          {
+            type: "insert",
+            index: cursor.begLn + 1,
+            lines: [{ id: this.newId(), val: indent + after }],
+          },
+        ],
+        {
+          begLn: cursor.begLn + 1,
+          begCol: indent.length,
+          endLn: cursor.begLn + 1,
+          endCol: indent.length,
+        },
+      );
     }
   }
 
@@ -2106,13 +2657,14 @@ class Bce {
     const lineEls = /** @type {NodeListOf<HTMLElement>} */ (
       this.content.querySelectorAll(".bce-line")
     );
-    const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
+    const oldLines = this.lines;
+    const oldLinesMap = new Map(oldLines.map((l) => [l.id, l]));
     /** @type {Rec[]} */
     const newLines = [];
 
-    if (lineEls.length === this.lines.length) {
+    if (lineEls.length === oldLines.length) {
       lineEls.forEach((el, idx) => {
-        newLines.push({ id: this.lines[idx].id, val: el.textContent || "" });
+        newLines.push({ id: oldLines[idx].id, val: el.textContent || "" });
       });
     } else {
       lineEls.forEach((el) => {
@@ -2128,12 +2680,22 @@ class Bce {
     if (newLines.length === 1 && newLines[0].val === "") {
       newLines[0].id = this.newId();
     }
+    if (newLines.length === 0) {
+      // Браузер убрал все .bce-line - восстанавливаем каноническую форму
+      newLines.push({ id: this.newId(), val: "" });
+    }
 
-    const oldLines = this.lines;
-    this.lines = newLines;
+    // Дифф oldLines -> newLines превращает структурное изменение DOM
+    // в патч (модель больше не заменяется целиком)
+    const ops = this.diffLines(oldLines, newLines);
 
     if (this.ignoreNextInput) {
       this.ignoreNextInput = false;
+      if (ops.length) {
+        // DOM разошёлся с моделью (нестандартный сценарий) - синхронизируем
+        // модель; в норме дифф пуст: правка уже была закоммичена в модель
+        this.lines = this._applyOpsTo(this.lines, ops);
+      }
       this._fireOnChange();
       return;
     }
@@ -2142,27 +2704,27 @@ class Bce {
     // т.к. _nodeMapDirty === true)
     const cursor = this.getCursor();
 
-    if (oldLines.length === newLines.length && oldLines.length > 0) {
-      // Инкрементальный рендер: число строк не изменилось, позиции совпадают
-      // (см. построение newLines выше). Перерисовываем только изменённые
-      // строки - без пересоздания всего DOM.
-      for (let i = 0; i < newLines.length; i++) {
-        if (oldLines[i].val !== newLines[i].val) this.renderLine(i);
-      }
-      // Изменённые строки переиндексированы в renderLine(), неизменённые
-      // браузер не трогал - индекс снова актуален.
+    if (!ops.length) {
+      // Содержимое не изменилось - историю не пополняем
       this._nodeMapDirty = false;
-      this.updateActiveLine();
-    } else {
-      // Структурное изменение (добавление/удаление строк) - редкий случай:
-      // полный render().
-      this.render();
+      this._fireOnChange();
+      return;
+    }
+
+    const inverse = this._invertOps(ops);
+    this.lines = this._applyOpsTo(this.lines, ops);
+    this._renderPatch(ops);
+
+    if (ops.every((op) => op.type === "replace")) {
+      // Число строк не изменилось: изменённые строки переиндексированы
+      // в renderLine(), неизменённые браузер не трогал - индекс актуален
+      this._nodeMapDirty = false;
     }
 
     if (cursor) {
       requestAnimationFrame(() => this.setCursor(cursor));
     }
-    this.pushHistory(cursor);
+    this._pushEntry(ops, cursor, inverse);
     this._fireOnChange();
   }
 

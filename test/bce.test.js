@@ -35,6 +35,7 @@ function makeEditor(initial, stubs = {}) {
   };
   ed.seq = 0;
   ed.lines = [];
+  ed._baseSnapshot = null;
   ed.history = [];
   ed.historyIndex = -1;
   ed.maxHistory = 200;
@@ -62,7 +63,9 @@ function makeEditor(initial, stubs = {}) {
   ed.updateActiveLine = function () {};
 
   (initial ?? [""]).forEach((v) => ed.addLine(v));
-  ed.pushHistory(null);
+  // Патч-история: текущее состояние становится базой (якорем)
+  ed._resetHistoryBase();
+  ed._baseSnapshot.cursor = ed.getCursor();
   return ed;
 }
 
@@ -383,4 +386,337 @@ test("removeEmmet: сокращение больше не разворачива
   ed.removeEmmet("div");
   assert.equal(ed.tryEmmet(), false);
   assert.deepEqual(vals(ed), ["div"]);
+});
+
+/* ==================== патчи: round-trip операций ==================== */
+
+test("round-trip: replace - forward затем inverse восстанавливает строки и id", () => {
+  const ed = makeEditor(["aaa", "bbb", "ccc"]);
+  const before = ed.lines.map((l) => ({ ...l }));
+  const ops = [{ type: "replace", index: 1, lines: [{ id: 99, val: "XXX" }] }];
+  const inv = ed._invertOps(ops);
+  ed.lines = ed._applyOpsTo(ed.lines, ops);
+  assert.deepEqual(vals(ed), ["aaa", "XXX", "ccc"]);
+  ed.lines = ed._applyOpsTo(ed.lines, inv);
+  assert.deepEqual(ed.lines, before);
+});
+
+test("round-trip: delete - inverse восстанавливает удалённые строки с их id", () => {
+  const ed = makeEditor(["aaa", "bbb", "ccc"]);
+  const before = ed.lines.map((l) => ({ ...l }));
+  const ops = [{ type: "delete", index: 0, count: 2 }];
+  const inv = ed._invertOps(ops);
+  ed.lines = ed._applyOpsTo(ed.lines, ops);
+  assert.deepEqual(vals(ed), ["ccc"]);
+  ed.lines = ed._applyOpsTo(ed.lines, inv);
+  assert.deepEqual(ed.lines, before);
+});
+
+test("round-trip: insert - inverse удаляет вставленное", () => {
+  const ed = makeEditor(["aaa"]);
+  const before = ed.lines.map((l) => ({ ...l }));
+  const ops = [
+    { type: "insert", index: 1, lines: [{ id: 77, val: "n1" }, { id: 78, val: "n2" }] },
+  ];
+  const inv = ed._invertOps(ops);
+  ed.lines = ed._applyOpsTo(ed.lines, ops);
+  assert.deepEqual(vals(ed), ["aaa", "n1", "n2"]);
+  ed.lines = ed._applyOpsTo(ed.lines, inv);
+  assert.deepEqual(ed.lines, before);
+});
+
+test("round-trip: набор операций (replace + delete + insert)", () => {
+  const ed = makeEditor(["l0", "l1", "l2", "l3"]);
+  const before = ed.lines.map((l) => ({ ...l }));
+  const ops = [
+    { type: "replace", index: 0, lines: [{ id: 1, val: "L0" }] },
+    { type: "delete", index: 2, count: 1 },
+    { type: "insert", index: 2, lines: [{ id: 90, val: "new" }] },
+  ];
+  const inv = ed._invertOps(ops);
+  ed.lines = ed._applyOpsTo(ed.lines, ops);
+  ed.lines = ed._applyOpsTo(ed.lines, inv);
+  assert.deepEqual(ed.lines, before);
+});
+
+test("round-trip: setLines (замена документа целиком)", () => {
+  const ed = makeEditor(["old1", "old2"]);
+  const before = ed.lines.map((l) => ({ ...l }));
+  const ops = [{ type: "setLines", lines: [{ id: 50, val: "fresh" }] }];
+  const inv = ed._invertOps(ops);
+  ed.lines = ed._applyOpsTo(ed.lines, ops);
+  assert.deepEqual(vals(ed), ["fresh"]);
+  ed.lines = ed._applyOpsTo(ed.lines, inv);
+  assert.deepEqual(ed.lines, before);
+});
+
+/* ================== патчи: серия случайных операций ================== */
+
+test("серия из 100 случайных операций → undo ×100 → redo ×100 → состояние совпадает", () => {
+  const ed = makeEditor(["l0", "l1", "l2"]);
+  const rnd = () => Math.floor(Math.random() * 1e9);
+  for (let i = 0; i < 100; i++) {
+    const len = ed.lines.length;
+    const idx = rnd() % len;
+    const kind = rnd() % 3;
+    if (kind === 0) {
+      // replace текущей строки
+      ed.commitChange(
+        [
+          {
+            type: "replace",
+            index: idx,
+            lines: [{ id: ed.lines[idx].id, val: "v" + rnd() }],
+          },
+        ],
+        cursor(idx, 0),
+      );
+    } else if (kind === 1) {
+      // insert новой строки
+      ed.commitChange(
+        [
+          {
+            type: "insert",
+            index: idx,
+            lines: [{ id: ed.newId(), val: "i" + rnd() }],
+          },
+        ],
+        cursor(idx, 0),
+      );
+    } else if (len > 1) {
+      // delete строки (не последней)
+      ed.commitChange([{ type: "delete", index: idx, count: 1 }],
+        cursor(Math.max(0, idx - 1), 0));
+    } else {
+      ed.commitChange(
+        [
+          {
+            type: "replace",
+            index: idx,
+            lines: [{ id: ed.lines[idx].id, val: "s" + rnd() }],
+          },
+        ],
+        cursor(idx, 0),
+      );
+    }
+  }
+  const finalState = ed.lines.map((l) => ({ ...l }));
+
+  let undos = 0;
+  while (ed.historyIndex >= 0) {
+    ed.undo();
+    undos++;
+  }
+  assert.ok(undos > 0);
+  assert.deepEqual(vals(ed), ["l0", "l1", "l2"]);
+
+  let redos = 0;
+  while (ed.historyIndex < ed.history.length - 1) {
+    ed.redo();
+    redos++;
+  }
+  assert.equal(redos, undos);
+  assert.deepEqual(ed.lines, finalState);
+});
+
+/* ======================= компакция базы ======================= */
+
+test("компакция: после > maxHistory патчей глубина прошлого ограничена", () => {
+  const ed = makeEditor(["base"]);
+  ed.maxHistory = 10;
+  for (let i = 0; i < 25; i++) {
+    ed.commitChange(
+      [
+        {
+          type: "replace",
+          index: 0,
+          lines: [{ id: ed.lines[0].id, val: "v" + i }],
+        },
+      ],
+      cursor(0, 0),
+    );
+  }
+  // Глубина прошлого ограничена, но redo-хвост сохранён
+  assert.ok(ed.history.length <= 11, `history.length=${ed.history.length}`);
+
+  // Полное undo останавливается на базе (аналог старого history.shift():
+  // самый старый «хвост» истории уходит при компакции).
+  // 25 патчей, компакции на 11-м и 22-м push → остаются 3 патча,
+  // база = состояние после 22-го push ("v21").
+  let steps = 0;
+  while (ed.historyIndex >= 0) {
+    ed.undo();
+    steps++;
+  }
+  assert.ok(steps > 0 && steps <= 11, `steps=${steps}`);
+  assert.deepEqual(vals(ed), ["v21"]);
+
+  // Полный redo восстанавливает финальное состояние
+  while (ed.historyIndex < ed.history.length - 1) ed.redo();
+  assert.deepEqual(vals(ed), ["v24"]);
+});
+
+test("компакция: undo до базы восстанавливает состояние базы (vals и id)", () => {
+  const ed = makeEditor(["a", "b"]);
+  ed.maxHistory = 3;
+  for (let i = 0; i < 10; i++) {
+    ed.commitChange(
+      [
+        {
+          type: "insert",
+          index: 0,
+          lines: [{ id: ed.newId(), val: "x" + i }],
+        },
+      ],
+      cursor(0, 0),
+    );
+  }
+  while (ed.historyIndex >= 0) ed.undo();
+  // Модель ровно совпадает с базой - и по vals, и по id
+  assert.deepEqual(ed.lines, ed._baseSnapshot.lines);
+  assert.deepEqual(vals(ed), ["x7", "x6", "x5", "x4", "x3", "x2", "x1", "x0", "a", "b"]);
+
+  // Полный redo восстанавливает финальное состояние
+  const finalState = "x9 x8 x7 x6 x5 x4 x3 x2 x1 x0 a b".split(" ");
+  while (ed.historyIndex < ed.history.length - 1) ed.redo();
+  assert.deepEqual(vals(ed), finalState);
+});
+
+/* ================== стабильность id и курсоров ================== */
+
+test("id строк стабильны после undo/redo (мэппинг dataset.lineId в onInput)", () => {
+  const ed = makeEditor(["one", "two"]);
+  const idsBefore = ed.lines.map((l) => l.id);
+  ed.commitChange([{ type: "delete", index: 0, count: 1 }], cursor(0, 0));
+  ed.undo();
+  assert.deepEqual(ed.lines.map((l) => l.id), idsBefore);
+  ed.redo();
+  ed.undo();
+  assert.deepEqual(ed.lines.map((l) => l.id), idsBefore);
+});
+
+test("insertText: undo восстанавливает исходные id, redo воспроизводит новые", () => {
+  const ed = makeEditor(["ab"]);
+  ed._cursor = cursor(0, 2);
+  const idsBefore = ed.lines.map((l) => l.id);
+  ed.insertText("cd\nef");
+  const after = ed.lines.map((l) => ({ ...l }));
+  ed.undo();
+  assert.deepEqual(ed.lines.map((l) => l.id), idsBefore);
+  ed.redo();
+  assert.deepEqual(ed.lines, after);
+});
+
+test("курсоры: cursorBefore/cursorAfter восстанавливаются на каждом шаге", () => {
+  // Стартовый курсор передаётся через стаб, чтобы он попал и в базу истории
+  const ed = makeEditor(["a"], { line: cursor(0, 1) });
+  ed.insertText("b"); // cursorAfter (0,2)
+  ed.insertText("c"); // cursorAfter (0,3)
+  ed.undo();
+  assert.deepEqual(ed._cursor, cursor(0, 2));
+  ed.undo();
+  assert.deepEqual(ed._cursor, cursor(0, 1));
+  ed.redo();
+  assert.deepEqual(ed._cursor, cursor(0, 2));
+  ed.redo();
+  assert.deepEqual(ed._cursor, cursor(0, 3));
+});
+
+/* ============================ diffLines ============================ */
+
+test("diffLines: замена текста в одной строке", () => {
+  const ed = makeEditor(["a", "b", "c"]);
+  const oldL = ed.lines;
+  const newL = [
+    { id: oldL[0].id, val: "a" },
+    { id: oldL[1].id, val: "B" },
+    { id: oldL[2].id, val: "c" },
+  ];
+  assert.deepEqual(ed.diffLines(oldL, newL), [
+    { type: "replace", index: 1, lines: [{ id: oldL[1].id, val: "B" }] },
+  ]);
+});
+
+test("diffLines: вставка строки в середину", () => {
+  const ed = makeEditor(["a", "c"]);
+  const oldL = ed.lines;
+  const newL = [
+    { id: oldL[0].id, val: "a" },
+    { id: 42, val: "b" },
+    { id: oldL[1].id, val: "c" },
+  ];
+  assert.deepEqual(ed.diffLines(oldL, newL), [
+    { type: "insert", index: 1, lines: [{ id: 42, val: "b" }] },
+  ]);
+});
+
+test("diffLines: удаление строки", () => {
+  const ed = makeEditor(["a", "b", "c"]);
+  const oldL = ed.lines;
+  const newL = [
+    { id: oldL[0].id, val: "a" },
+    { id: oldL[2].id, val: "c" },
+  ];
+  assert.deepEqual(ed.diffLines(oldL, newL), [
+    { type: "delete", index: 1, count: 1 },
+  ]);
+});
+
+test("diffLines: без изменений → пустой список операций", () => {
+  const ed = makeEditor(["a", "b"]);
+  const oldL = ed.lines;
+  const newL = oldL.map((l) => ({ id: l.id, val: l.val }));
+  assert.deepEqual(ed.diffLines(oldL, newL), []);
+});
+
+test("diffLines: round-trip через _applyOpsTo", () => {
+  const ed = makeEditor(["a", "b", "c"]);
+  const oldL = ed.lines.map((l) => ({ ...l }));
+  const newL = [
+    { id: oldL[0].id, val: "A" },
+    { id: 70, val: "x" },
+    { id: 71, val: "y" },
+    { id: oldL[2].id, val: "c!" },
+  ];
+  const ops = ed.diffLines(oldL, newL);
+  ed.lines = ed._applyOpsTo(ed.lines.map((l) => ({ ...l })), ops);
+  assert.deepEqual(ed.lines, newL);
+});
+
+/* ======================= setText / setLines ======================= */
+
+test("setText: без resetHistory - старый документ доступен через undo", () => {
+  const ed = makeEditor(["old"]);
+  ed.setText("new\ndoc");
+  assert.deepEqual(vals(ed), ["new", "doc"]);
+  ed.undo();
+  assert.deepEqual(vals(ed), ["old"]);
+  ed.redo();
+  assert.deepEqual(vals(ed), ["new", "doc"]);
+});
+
+test("setText: c resetHistory - история очищена", () => {
+  const ed = makeEditor(["old"]);
+  ed._cursor = cursor(0, 1);
+  ed.insertText("X");
+  ed.setText("new", { resetHistory: true });
+  ed.undo(); // не должен откатывать
+  assert.deepEqual(vals(ed), ["new"]);
+});
+
+test("setLines: без resetHistory - undo возвращает прежний документ с id", () => {
+  const ed = makeEditor(["old"]);
+  ed.setLines([
+    { id: 42, val: "a" },
+    { id: 43, val: "b" },
+  ]);
+  assert.deepEqual(vals(ed), ["a", "b"]);
+  ed.undo();
+  assert.deepEqual(vals(ed), ["old"]);
+  ed.redo();
+  assert.deepEqual(vals(ed), ["a", "b"]);
+  assert.deepEqual(
+    ed.lines.map((l) => l.id),
+    [42, 43],
+  );
 });
