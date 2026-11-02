@@ -165,6 +165,17 @@ class Bce {
     this._highlightCache = new Map();
     /** @type {number} — максимум записей в кэше подсветки (FIFO-вытеснение) */
     this._highlightCacheMax = 500;
+    /**
+     * Индекс текстовых узлов → позиция в модели. Заполняется в render()
+     * через _indexLineNodes(); WeakMap, чтобы старые узлы собирались GC.
+     * Инвалидация: DOM, изменённый браузером до onInput, не индексирован —
+     * в этом случае включается флаг _nodeMapDirty и getCursor() идёт
+     * резервным путём через TreeWalker.
+     * @type {WeakMap<Node, { lineIdx: number, baseOffset: number }>}
+     */
+    this._nodeMap = new WeakMap();
+    /** @type {boolean} — true, если _nodeMap устарел (см. onInput) */
+    this._nodeMapDirty = false;
 
     this.build();
     this.bindEvents();
@@ -521,10 +532,33 @@ class Bce {
       div.dataset.lineIndex = String(idx);
       div.innerHTML = line.val === "" ? "<br>" : this.highlight(line.val);
       this.content.appendChild(div);
+      this._indexLineNodes(div, idx);
     });
 
     if (cursor) this.setCursor(cursor);
     this.updateActiveLine();
+    // DOM пересоздан — индекс текстовых узлов снова актуален
+    this._nodeMapDirty = false;
+  }
+
+  /**
+   * Индексирует текстовые узлы строки в `_nodeMap` для быстрого `getCursor()`.
+   * Старые узлы собираются GC (WeakMap): render() пересоздаёт DOM,
+   * а при перезаписи записи узла в renderLine() — заменяются.
+   * @param {HTMLElement} div — элемент строки `.bce-line`
+   * @param {number} idx — индекс строки в модели
+   * @returns {void}
+   * @private
+   */
+  _indexLineNodes(div, idx) {
+    let base = 0;
+    const walker = document.createTreeWalker(div, NodeFilter.SHOW_TEXT, null);
+    let tn = walker.nextNode();
+    while (tn) {
+      this._nodeMap.set(tn, { lineIdx: idx, baseOffset: base });
+      base += tn.textContent.length;
+      tn = walker.nextNode();
+    }
   }
 
   /**
@@ -658,6 +692,16 @@ class Bce {
      * @returns {{ lineIndex: number, offset: number }}
      */
     const getNodeInfo = (node, offset) => {
+      // Быстрый путь: узел проиндексирован при последнем render() — O(1)
+      // вместо TreeWalker по строке на каждый вызов.
+      if (node.nodeType === Node.TEXT_NODE && !this._nodeMapDirty) {
+        const info = this._nodeMap.get(node);
+        if (info) {
+          return { lineIndex: info.lineIdx, offset: info.baseOffset + offset };
+        }
+      }
+      // Резервный путь: поднимаемся до .bce-line и считаем TreeWalker'ом.
+      // Также сюда попадаем, если _nodeMap устарел (_nodeMapDirty — см. onInput).
       let lineEl = node;
       while (
         lineEl &&
@@ -1881,6 +1925,11 @@ class Bce {
   onInput(_e) {
     const ie = /** @type {InputEvent} */ (_e);
     if (ie?.isComposing || this._composing) return;
+
+    // DOM уже изменён браузером до этого события — индекс текстовых узлов
+    // (_nodeMap) мог устареть. До ближайшего render() getCursor() обязан
+    // идти резервным путём через TreeWalker.
+    this._nodeMapDirty = true;
 
     const lineEls = this.content.querySelectorAll(".bce-line");
     const oldLinesMap = new Map(this.lines.map((l) => [l.id, l]));
