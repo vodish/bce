@@ -562,6 +562,22 @@ class Bce {
   }
 
   /**
+   * Перерисовывает одну строку без полного render() (инкрементальный рендер).
+   * Обновляет HTML и переиндексирует текстовые узлы строки в _nodeMap.
+   * @param {number} idx — индекс строки в модели
+   * @returns {void}
+   */
+  renderLine(idx) {
+    const line = this.lines[idx];
+    const div = /** @type {HTMLElement | undefined} */ (
+      this.content.children[idx]
+    );
+    if (!div || !line) return;
+    div.innerHTML = line.val === "" ? "<br>" : this.highlight(line.val);
+    this._indexLineNodes(div, idx);
+  }
+
+  /**
    * Подсвечивает активную строку в контенте и гуттере.
    * @returns {void}
    */
@@ -1954,6 +1970,7 @@ class Bce {
       newLines[0].id = this.newId();
     }
 
+    const oldLines = this.lines;
     this.lines = newLines;
 
     if (this.ignoreNextInput) {
@@ -1962,12 +1979,31 @@ class Bce {
       return;
     }
 
+    // Курсор читаем ДО изменения DOM (резервный путь через TreeWalker,
+    // т.к. _nodeMapDirty === true)
     const cursor = this.getCursor();
-    this.render();
+
+    if (oldLines.length === newLines.length && oldLines.length > 0) {
+      // Инкрементальный рендер: число строк не изменилось, позиции совпадают
+      // (см. построение newLines выше). Перерисовываем только изменённые
+      // строки — без пересоздания всего DOM.
+      for (let i = 0; i < newLines.length; i++) {
+        if (oldLines[i].val !== newLines[i].val) this.renderLine(i);
+      }
+      // Изменённые строки переиндексированы в renderLine(), неизменённые
+      // браузер не трогал — индекс снова актуален.
+      this._nodeMapDirty = false;
+      this.updateActiveLine();
+    } else {
+      // Структурное изменение (добавление/удаление строк) — редкий случай:
+      // полный render().
+      this.render();
+    }
+
     if (cursor) {
       requestAnimationFrame(() => this.setCursor(cursor));
     }
-    this.pushHistory();
+    this.pushHistory(cursor);
     this._fireOnChange();
   }
 
