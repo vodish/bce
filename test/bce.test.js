@@ -14,15 +14,15 @@ const assert = require("node:assert/strict");
 const code = fs.readFileSync(path.join(__dirname, "..", "bce.js"), "utf8");
 const Bce = new Function(`${code}\n;return Bce;`)();
 
-// restoreSnapshot использует requestAnimationFrame — стаб для Node
+// restoreSnapshot использует requestAnimationFrame - стаб для Node
 if (typeof globalThis.requestAnimationFrame !== "function") {
   globalThis.requestAnimationFrame = (fn) => fn();
 }
 
 /**
  * Создаёт «модельный» экземпляр Bce без DOM.
- * @param {string[] | undefined} initial — начальные строки
- * @param {{ line?: BceCursor }} [stubs] — стартовый курсор
+ * @param {string[] | undefined} initial - начальные строки
+ * @param {{ line?: BceCursor }} [stubs] - стартовый курсор
  */
 function makeEditor(initial, stubs = {}) {
   const ed = Object.create(Bce.prototype);
@@ -112,10 +112,7 @@ test("Ne: один и тот же объект в памяти → false", () =>
 /* ========================== getLeadingSpaces ========================= */
 
 test("getLeadingSpaces: пробелы и табы", () => {
-  assert.equal(
-    Bce.prototype.getLeadingSpaces.call(null, " \tab"),
-    " \t",
-  );
+  assert.equal(Bce.prototype.getLeadingSpaces.call(null, " \tab"), " \t");
 });
 
 test("getLeadingSpaces: без ведущих пробелов → пусто", () => {
@@ -139,10 +136,7 @@ test("findWordBoundary: назад от начала слова", () => {
 });
 
 test("findWordBoundary: вперёд до конца строки", () => {
-  assert.equal(
-    Bce.prototype.findWordBoundary.call(null, "foo bar", 4, 1),
-    7,
-  );
+  assert.equal(Bce.prototype.findWordBoundary.call(null, "foo bar", 4, 1), 7);
 });
 
 /* =========================== deleteSelection ========================= */
@@ -198,7 +192,7 @@ test("insertText: заменяет выделение", () => {
 
 /* ============================== handleTab ============================ */
 
-test("handleTab: без выделения — вставляет пробелы до таб-стопа", () => {
+test("handleTab: без выделения - вставляет пробелы до таб-стопа", () => {
   const ed = makeEditor(["foo"]);
   ed._cursor = cursor(0, 0);
   ed.handleTab(false);
@@ -206,7 +200,7 @@ test("handleTab: без выделения — вставляет пробелы
   assert.deepEqual(ed._cursor, cursor(0, 4));
 });
 
-test("handleTab: выделение в одной строке — замена на пробелы", () => {
+test("handleTab: выделение в одной строке - замена на пробелы", () => {
   const ed = makeEditor(["ab"]);
   ed._cursor = cursor(0, 0, 0, 2);
   ed.handleTab(false);
@@ -214,7 +208,7 @@ test("handleTab: выделение в одной строке — замена 
   assert.deepEqual(ed._cursor, cursor(0, 4));
 });
 
-test("handleTab: многострочное выделение — отступ каждой строке", () => {
+test("handleTab: многострочное выделение - отступ каждой строке", () => {
   const ed = makeEditor(["a", "b"]);
   ed._cursor = cursor(0, 0, 1, 1);
   ed.handleTab(false);
@@ -222,7 +216,7 @@ test("handleTab: многострочное выделение — отступ 
   assert.deepEqual(ed._cursor, cursor(0, 4, 1, 5));
 });
 
-test("handleTab: Shift+Tab — убирает отступ", () => {
+test("handleTab: Shift+Tab - убирает отступ", () => {
   const ed = makeEditor(["    abc"]);
   ed._cursor = cursor(0, 4);
   ed.handleTab(true);
@@ -232,7 +226,7 @@ test("handleTab: Shift+Tab — убирает отступ", () => {
 
 /* ============================= handleEnter =========================== */
 
-test("handleEnter: середина строки — перенос (курсор в начале новой строки)", () => {
+test("handleEnter: середина строки - перенос (курсор в начале новой строки)", () => {
   const ed = makeEditor(["hello world"]);
   ed._cursor = cursor(0, 5);
   ed.handleEnter();
@@ -241,7 +235,7 @@ test("handleEnter: середина строки — перенос (курсо�
   assert.deepEqual(ed._cursor, cursor(1, 0));
 });
 
-test("handleEnter: в начале непустой строки — пустая строка сверху", () => {
+test("handleEnter: в начале непустой строки - пустая строка сверху", () => {
   const ed = makeEditor(["abc"]);
   ed._cursor = cursor(0, 0);
   ed.handleEnter();
@@ -249,7 +243,7 @@ test("handleEnter: в начале непустой строки — пуста�
   assert.deepEqual(ed._cursor, cursor(1, 0));
 });
 
-test("handleEnter: с выделением — сначала удаление, затем разбивка", () => {
+test("handleEnter: с выделением - сначала удаление, затем разбивка", () => {
   const ed = makeEditor(["abcdef"]);
   ed._cursor = cursor(0, 1, 0, 4);
   ed.handleEnter();
@@ -295,7 +289,7 @@ test("redo: не выходит за последнее состояние", () 
 
 /* =========================== _tryMoveShortcut ======================== */
 
-test("_tryMoveShortcut: ',>' в середине — перемещает строку вниз", () => {
+test("_tryMoveShortcut: ',>' в середине - перемещает строку вниз", () => {
   const ed = makeEditor(["a,", "b"]);
   ed._cursor = cursor(0, 2);
   assert.equal(ed._tryMoveShortcut(">"), true);
@@ -303,7 +297,7 @@ test("_tryMoveShortcut: ',>' в середине — перемещает стр
   assert.deepEqual(ed._cursor, cursor(1, 2));
 });
 
-test("_tryMoveShortcut: ',<' в середине — перемещает строку вверх", () => {
+test("_tryMoveShortcut: ',<' в середине - перемещает строку вверх", () => {
   const ed = makeEditor(["b", "a,"]);
   ed._cursor = cursor(1, 2);
   assert.equal(ed._tryMoveShortcut("<"), true);
@@ -323,7 +317,7 @@ test("_tryMoveShortcut: курсор в начале строки → false", ()
   assert.equal(ed._tryMoveShortcut(">"), false);
 });
 
-test("_tryMoveShortcut: запятая на последней строке — true без изменений", () => {
+test("_tryMoveShortcut: запятая на последней строке - true без изменений", () => {
   const ed = makeEditor(["b", "a,"]);
   ed._cursor = cursor(1, 2);
   assert.equal(ed._tryMoveShortcut(">"), true);
@@ -332,12 +326,9 @@ test("_tryMoveShortcut: запятая на последней строке — 
 
 /* =========================== getSelectedText ========================= */
 
-test("getSelectedText: endCol=0 — без хвостового \\n", () => {
+test("getSelectedText: endCol=0 - без хвостового \\n", () => {
   const ed = makeEditor(["line1", "line2", "line3"]);
-  assert.equal(
-    ed.getSelectedText(cursor(0, 0, 2, 0)),
-    "line1\nline2",
-  );
+  assert.equal(ed.getSelectedText(cursor(0, 0, 2, 0)), "line1\nline2");
 });
 
 test("getSelectedText: частичный конец строки", () => {
@@ -345,14 +336,14 @@ test("getSelectedText: частичный конец строки", () => {
   assert.equal(ed.getSelectedText(cursor(0, 0, 1, 2)), "line1\nli");
 });
 
-test("getSelectedText: вся строка целиком — без \\n", () => {
+test("getSelectedText: вся строка целиком - без \\n", () => {
   const ed = makeEditor(["line1", "line2"]);
   assert.equal(ed.getSelectedText(cursor(0, 0, 0, 5)), "line1");
 });
 
 /* ============================= getLines ============================== */
 
-test("getLines: возвращает копию — мутация не влияет на редактор", () => {
+test("getLines: возвращает копию - мутация не влияет на редактор", () => {
   const ed = makeEditor(["a", "b"]);
   const copy = ed.getLines();
   copy.push({ id: 999, val: "x" });

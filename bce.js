@@ -2,24 +2,24 @@
 
 /**
  * @typedef {Object} Rec
- * @property {number} id    — уникальный идентификатор строки
- * @property {string} val   — текстовое содержимое строки
+ * @property {number} id    - уникальный идентификатор строки
+ * @property {string} val   - текстовое содержимое строки
  */
 
 /**
  * @typedef {Object} BceCursor
- * @property {number}  begLn            — индекс начальной строки (нормализовано: всегда не позже endLn)
- * @property {number}  begCol           — смещение в начальной строке
- * @property {number}  endLn            — индекс конечной строки
- * @property {number}  endCol           — смещение в конечной строке
+ * @property {number}  begLn            - индекс начальной строки (нормализовано: всегда не позже endLn)
+ * @property {number}  begCol           - смещение в начальной строке
+ * @property {number}  endLn            - индекс конечной строки
+ * @property {number}  endCol           - смещение в конечной строке
  * @property {boolean} [backward=false] - true, если выделение выполнялось справа-налево
  *                                       (курсор/фокус находится в точке beg)
  */
 
 /**
  * @typedef {Object} BceHistorySnapshot
- * @property {Rec[]}          lines  — снимок всех строк
- * @property {BceCursor|null} cursor — снимок позиции курсора
+ * @property {Rec[]}          lines  - снимок всех строк
+ * @property {BceCursor|null} cursor - снимок позиции курсора
  */
 
 /**
@@ -29,7 +29,7 @@
  * @property {boolean} [ctrl] - требуется ли Ctrl / Cmd
  * @property {boolean} [shift] - требуется ли Shift
  * @property {boolean} [alt] - требуется ли Alt
- * @property {string}  action  — имя действия
+ * @property {string}  action  - имя действия
  */
 
 /**
@@ -43,8 +43,8 @@
 
 /**
  * @typedef {Object} BceNodePoint
- * @property {Node}   node   — DOM-узел
- * @property {number} offset — смещение внутри узла
+ * @property {Node}   node   - DOM-узел
+ * @property {number} offset - смещение внутри узла
  */
 
 /**
@@ -65,7 +65,7 @@ class Bce {
       const a = arr1[i],
         b = arr2[i];
 
-      // Если это один и тот же объект в памяти — пропускаем
+      // Если это один и тот же объект в памяти - пропускаем
       if (a === b) continue;
 
       // Если один из них null/undefined или не совпадают значения полей
@@ -78,7 +78,7 @@ class Bce {
 
   /**
    * Ищет границу слова в тексте (используется Shift+Ctrl+Arrows).
-   * Не использует состояние экземпляра — можно вызывать как
+   * Не использует состояние экземпляра - можно вызывать как
    * Bce.prototype.findWordBoundary.call(null, val, pos, dir).
    * @param {string} val       текст строки
    * @param {number} pos       текущая позиция
@@ -103,7 +103,7 @@ class Bce {
   }
 
   /**
-   * @param {string | HTMLElement} container — селектор или DOM-элемент контейнера
+   * @param {string | HTMLElement} container - селектор или DOM-элемент контейнера
    * @param {BceOptions}           [options] - настройки редактора
    */
   constructor(container, options = {}) {
@@ -199,9 +199,9 @@ class Bce {
      * @type {WeakMap<Node, { lineIdx: number, baseOffset: number }>}
      */
     this._nodeMap = new WeakMap();
-    /** @type {boolean} — true, если _nodeMap устарел (см. onInput) */
+    /** @type {boolean} - true, если _nodeMap устарел (см. onInput) */
     this._nodeMapDirty = false;
-    /** @type {string[] | null} — кэш Object.keys(this.emmet) (сбрасывается в add/removeEmmet) */
+    /** @type {string[] | null} - кэш Object.keys(this.emmet) (сбрасывается в add/removeEmmet) */
     this._emmetKeys = null;
 
     this.build();
@@ -234,7 +234,7 @@ class Bce {
       "bce-show-id",
     );
     // Снимаем маркер занятости контейнера
-    delete /** @type {any} */ (this.container).__bce;
+    delete (/** @type {any} */ (this.container).__bce);
     this.lines = [];
     this.history = [];
     this.historyIndex = -1;
@@ -279,7 +279,7 @@ class Bce {
       this.history = [];
       this.historyIndex = -1;
     }
-    // Курсор ещё не «прижился» к новому содержимому — снимок без курсора
+    // Курсор ещё не «прижился» к новому содержимому - снимок без курсора
     this.pushHistory(null);
     this._fireOnChange();
   }
@@ -306,14 +306,14 @@ class Bce {
       this.history = [];
       this.historyIndex = -1;
     }
-    // Курсор ещё не «прижился» к новому содержимому — снимок без курсора
+    // Курсор ещё не «прижился» к новому содержимому - снимок без курсора
     this.pushHistory(null);
     this._fireOnChange();
   }
 
   /**
    * Сравнивает переданный массив строк с текущим содержимым редактора.
-   * @param {Rec[]} lines — массив строк для сравнения
+   * @param {Rec[]} lines - массив строк для сравнения
    * @returns {boolean}
    */
   notEqual(lines = []) {
@@ -338,7 +338,9 @@ class Bce {
    * @returns {Array<{ id: number, val: string }>}
    */
   getLines() {
-    return this.checkEmpty() ? [] : this.lines.map((l) => ({ id: l.id, val: l.val }));
+    return this.checkEmpty()
+      ? []
+      : this.lines.map((l) => ({ id: l.id, val: l.val }));
   }
 
   /* ================================================================
@@ -416,8 +418,8 @@ class Bce {
   /**
    * Добавляет / переопределяет Emmet-сокращение.
    * Шаблон: HTML с `|` в позиции курсора после разворота.
-   * @param {string} key      — сокращение (например, `"div"`)
-   * @param {string} template — шаблон разворота (например, `"<div>|</div>"`)
+   * @param {string} key      - сокращение (например, `"div"`)
+   * @param {string} template - шаблон разворота (например, `"<div>|</div>"`)
    * @returns {void}
    */
   addEmmet(key, template) {
@@ -495,8 +497,8 @@ class Bce {
 
     // IME-композиция (китайский / японский / корейский ввод, мобильные
     // клавиатуры): во время композиции события input приходят с промежуточным
-    // текстом — рендер в этот момент ломает композицию. Обрабатываем ввод
-    // один раз — в compositionend.
+    // текстом - рендер в этот момент ломает композицию. Обрабатываем ввод
+    // один раз - в compositionend.
     this.content.addEventListener(
       "compositionstart",
       () => {
@@ -524,7 +526,7 @@ class Bce {
           inputEvent.preventDefault();
           this.redo();
         } else if (inputEvent.inputType === "insertCompositionText") {
-          // Промежуточный текст IME — не вмешиваемся в композицию.
+          // Промежуточный текст IME - не вмешиваемся в композицию.
           return;
         } else if (
           inputEvent.inputType === "insertText" &&
@@ -582,8 +584,8 @@ class Bce {
 
   /**
    * Добавляет строку в модель.
-   * @param {string} val      — содержимое строки
-   * @param {number} [index] - позиция вставки (по умолчанию — конец)
+   * @param {string} val      - содержимое строки
+   * @param {number} [index] - позиция вставки (по умолчанию - конец)
    * @returns {Rec}
    */
   addLine(val, index = this.lines.length) {
@@ -631,7 +633,7 @@ class Bce {
 
     if (cursor) this.setCursor(cursor);
     this.updateActiveLine();
-    // DOM пересоздан — индекс текстовых узлов снова актуален
+    // DOM пересоздан - индекс текстовых узлов снова актуален
     this._nodeMapDirty = false;
 
     // Восстанавливаем скролл, чтобы вьюпорт не прыгал
@@ -645,9 +647,9 @@ class Bce {
   /**
    * Индексирует текстовые узлы строки в `_nodeMap` для быстрого `getCursor()`.
    * Старые узлы собираются GC (WeakMap): render() пересоздаёт DOM,
-   * а при перезаписи записи узла в renderLine() — заменяются.
-   * @param {HTMLElement} div — элемент строки `.bce-line`
-   * @param {number} idx — индекс строки в модели
+   * а при перезаписи записи узла в renderLine() - заменяются.
+   * @param {HTMLElement} div - элемент строки `.bce-line`
+   * @param {number} idx - индекс строки в модели
    * @returns {void}
    * @private
    */
@@ -665,7 +667,7 @@ class Bce {
   /**
    * Перерисовывает одну строку без полного render() (инкрементальный рендер).
    * Обновляет HTML и переиндексирует текстовые узлы строки в _nodeMap.
-   * @param {number} idx — индекс строки в модели
+   * @param {number} idx - индекс строки в модели
    * @returns {void}
    */
   renderLine(idx) {
@@ -707,8 +709,8 @@ class Bce {
 
   /**
    * Ограничивает смещение допустимыми пределами строки.
-   * @param {number} lineIdx — индекс строки
-   * @param {number} off     — исходное смещение
+   * @param {number} lineIdx - индекс строки
+   * @param {number} off     - исходное смещение
    * @returns {number}
    */
   _clampOffset(lineIdx, off) {
@@ -717,7 +719,7 @@ class Bce {
   }
 
   /**
-   * Возвращает позицию курсора (фокус выделения) — точку, куда «движется» выделение.
+   * Возвращает позицию курсора (фокус выделения) - точку, куда «движется» выделение.
    * @param {BceCursor} cursor
    * @returns {{ ln: number, col: number }}
    */
@@ -728,7 +730,7 @@ class Bce {
   }
 
   /**
-   * Возвращает якорь выделения — точку, откуда началось выделение.
+   * Возвращает якорь выделения - точку, откуда началось выделение.
    * @param {BceCursor} cursor
    * @returns {{ ln: number, col: number }}
    */
@@ -745,14 +747,14 @@ class Bce {
   /**
    * Экранирует текст и оборачивает HTML-теги / атрибуты / комментарии
    * в `<span>` с соответствующими CSS-классами.
-   * @param {string} val — сырой текст строки
+   * @param {string} val - сырой текст строки
    * @returns {string} - HTML-строка
    */
   highlight(val) {
     if (!val) return "";
 
     // Кэш: большинство строк не меняются при каждом рендере, а регэкспы
-    // подсветки — самая дорогая часть render(). Ключ — текст строки.
+    // подсветки - самая дорогая часть render(). Ключ - текст строки.
     const cached = this._highlightCache.get(val);
     if (cached !== undefined) return cached;
 
@@ -814,7 +816,7 @@ class Bce {
      * @returns {{ lineIndex: number, offset: number }}
      */
     const getNodeInfo = (node, offset) => {
-      // Быстрый путь: узел проиндексирован при последнем render() — O(1)
+      // Быстрый путь: узел проиндексирован при последнем render() - O(1)
       // вместо TreeWalker по строке на каждый вызов.
       if (node.nodeType === Node.TEXT_NODE && !this._nodeMapDirty) {
         const info = this._nodeMap.get(node);
@@ -823,7 +825,7 @@ class Bce {
         }
       }
       // Резервный путь: поднимаемся до .bce-line и считаем TreeWalker'ом.
-      // Также сюда попадаем, если _nodeMap устарел (_nodeMapDirty — см. onInput).
+      // Также сюда попадаем, если _nodeMap устарел (_nodeMapDirty - см. onInput).
       let lineEl = /** @type {any} */ (node);
       while (
         lineEl &&
@@ -972,10 +974,7 @@ class Bce {
     };
 
     let { begLn, begCol, endLn, endCol } = cursor;
-    if (
-      begLn > endLn ||
-      (begLn === endLn && begCol > endCol)
-    ) {
+    if (begLn > endLn || (begLn === endLn && begCol > endCol)) {
       [begLn, endLn] = [endLn, begLn];
       [begCol, endCol] = [endCol, begCol];
     }
@@ -994,19 +993,22 @@ class Bce {
 
     const beg = setPoint(begLn, begCol);
     const end =
-      begLn === endLn && begCol === endCol
-        ? beg
-        : setPoint(endLn, endCol);
+      begLn === endLn && begCol === endCol ? beg : setPoint(endLn, endCol);
 
     try {
       const sel = window.getSelection();
       if (sel) {
         sel.removeAllRanges();
         // setBaseAndExtent сохраняет направление выделения:
-        // base — точка старта (якорь), extent — точка курсора (фокус).
+        // base - точка старта (якорь), extent - точка курсора (фокус).
         const base = cursor.backward ? end : beg;
         const extent = cursor.backward ? beg : end;
-        sel.setBaseAndExtent(base.node, base.offset, extent.node, extent.offset);
+        sel.setBaseAndExtent(
+          base.node,
+          base.offset,
+          extent.node,
+          extent.offset,
+        );
       }
     } catch (_e) {
       /* ignore */
@@ -1038,12 +1040,12 @@ class Bce {
    * `commitChange`): после `render()` DOM-выделение может быть невалидным
    * и `getCursor()` вернёт чужую позицию.
    *
-   * `cursor = null` — снимок без курсора (содержимое заменено целиком,
+   * `cursor = null` - снимок без курсора (содержимое заменено целиком,
    * позиция ещё не установлена, например в `setText` / `setLines`).
-   * `cursor = undefined` — курсор читается из DOM (`getCursor()`), это
+   * `cursor = undefined` - курсор читается из DOM (`getCursor()`), это
    * корректно после `restoreSnapshot`, где `setCursor` уже применён.
    *
-   * @param {BceCursor | null} [cursor] - снимок курсора (`undefined` — читать из DOM, `null` — без курсора)
+   * @param {BceCursor | null} [cursor] - снимок курсора (`undefined` - читать из DOM, `null` - без курсора)
    * @returns {void}
    */
   pushHistory(cursor = undefined) {
@@ -1145,10 +1147,7 @@ class Bce {
    * @returns {string}
    */
   getSelectedText(cursor) {
-    if (
-      cursor.begLn === cursor.endLn &&
-      cursor.begCol === cursor.endCol
-    )
+    if (cursor.begLn === cursor.endLn && cursor.begCol === cursor.endCol)
       return "";
     if (cursor.begLn === cursor.endLn) {
       return this.lines[cursor.begLn].val.substring(
@@ -1160,7 +1159,7 @@ class Bce {
     for (let i = cursor.begLn + 1; i < cursor.endLn; i++) {
       result += "\n" + this.lines[i].val;
     }
-    // Выделение до НАЧАЛА конечной строки (endCol === 0) — хвостовой \n
+    // Выделение до НАЧАЛА конечной строки (endCol === 0) - хвостовой \n
     // и пустой хвост не нужны (иначе "line1\nline2\n" вместо "line1\nline2").
     const tail = this.lines[cursor.endLn].val.substring(0, cursor.endCol);
     return cursor.endCol === 0 ? result : result + "\n" + tail;
@@ -1174,8 +1173,7 @@ class Bce {
   deleteSelection(cursor) {
     if (
       !cursor ||
-      (cursor.begLn === cursor.endLn &&
-        cursor.begCol === cursor.endCol)
+      (cursor.begLn === cursor.endLn && cursor.begCol === cursor.endCol)
     )
       return;
 
@@ -1190,10 +1188,7 @@ class Bce {
       first.val =
         first.val.substring(0, cursor.begCol) +
         last.val.substring(cursor.endCol);
-      this.lines.splice(
-        cursor.begLn + 1,
-        cursor.endLn - cursor.begLn,
-      );
+      this.lines.splice(cursor.begLn + 1, cursor.endLn - cursor.begLn);
     }
 
     if (this.lines.length === 1 && this.lines[0].val === "") {
@@ -1258,7 +1253,7 @@ class Bce {
 
   /**
    * Диспетчер действий по имени.
-   * @param {string} action — имя действия из `keyBindings`
+   * @param {string} action - имя действия из `keyBindings`
    * @returns {void}
    */
   doAction(action) {
@@ -1315,7 +1310,7 @@ class Bce {
 
   /**
    * Дублирует текущую строку вверх или вниз.
-   * @param {number} dir — `1` (вниз) или `-1` (вверх)
+   * @param {number} dir - `1` (вниз) или `-1` (вверх)
    * @returns {void}
    */
   actionDuplicate(dir) {
@@ -1335,7 +1330,7 @@ class Bce {
 
   /**
    * Перемещает текущую строку вверх или вниз.
-   * @param {number} dir — `1` (вниз) или `-1` (вверх)
+   * @param {number} dir - `1` (вниз) или `-1` (вверх)
    * @returns {void}
    */
   actionMove(dir) {
@@ -1425,7 +1420,7 @@ class Bce {
   }
 
   /**
-   * Главный обработчик `keydown` — оркестратор.
+   * Главный обработчик `keydown` - оркестратор.
    * Логика разбита на подметоды, каждый возвращает `true`, если событие
    * обработано: `_handleActionKeys` → `_handleSpecialKeys` → `_handleNavigation`.
    * @param {KeyboardEvent} e
@@ -1561,7 +1556,7 @@ class Bce {
    * Вызывается из двух мест: `keydown` (десктоп) и `beforeinput`
    * (мобильные браузеры, где `keydown` для `>` / `<` может не срабатывать
    * и символ приходит через `insertText`).
-   * @param {string} key — нажатый символ: `">"` или `"<"`
+   * @param {string} key - нажатый символ: `">"` или `"<"`
    * @returns {boolean} - `true`, если сочетание обработано
    * @private
    */
@@ -1569,10 +1564,7 @@ class Bce {
     const dir = key === ">" ? 1 : -1;
     const cursor = this.getCursor();
     if (!cursor) return false;
-    if (
-      cursor.begLn !== cursor.endLn ||
-      cursor.begCol !== cursor.endCol
-    ) {
+    if (cursor.begLn !== cursor.endLn || cursor.begCol !== cursor.endCol) {
       return false;
     }
     if (cursor.begCol === 0) return false;
@@ -1607,16 +1599,15 @@ class Bce {
     const cursor = this.getCursor();
     if (!cursor) return;
     const isSelection =
-      cursor.begLn !== cursor.endLn ||
-      cursor.begCol !== cursor.endCol;
+      cursor.begLn !== cursor.endLn || cursor.begCol !== cursor.endCol;
 
     // Ветка 1: выделение начинается с колонки 0.
-    // 1а — выделена вся строка целиком (begCol=0, endCol=len, одна строка):
+    // 1а - выделена вся строка целиком (begCol=0, endCol=len, одна строка):
     //      очищаем строку, курсор остаётся в {begLn, 0}.
-    // 1б — endCol=0 и endLn>begLn: выделены целые строки begLn..endLn-1
+    // 1б - endCol=0 и endLn>begLn: выделены целые строки begLn..endLn-1
     //      (например, пустые строки 2–3): удаляем их, курсор в (begLn, 0);
-    //      если удалены все строки — оставляем одну пустую.
-    //      Частичное выделение последней строки сюда не попадает — см. ветку 2.
+    //      если удалены все строки - оставляем одну пустую.
+    //      Частичное выделение последней строки сюда не попадает - см. ветку 2.
     if (isSelection && cursor.begCol === 0) {
       if (
         cursor.begLn === cursor.endLn &&
@@ -1658,7 +1649,7 @@ class Bce {
     }
 
     // Ветка 2: любое другое выделение (частичное внутри строки или через
-    // несколько строк, включая выделение строки целиком) — универсальное
+    // несколько строк, включая выделение строки целиком) - универсальное
     // удаление выделения через deleteSelection().
     if (isSelection) {
       e.preventDefault();
@@ -1670,7 +1661,7 @@ class Bce {
     const currentLineIdx = cursor.begLn;
     const currentLine = this.lines[currentLineIdx];
 
-    // Ветка 3: Backspace на ПУСТОЙ строке (не единственной) — удаляем её;
+    // Ветка 3: Backspace на ПУСТОЙ строке (не единственной) - удаляем её;
     // курсор уходит в конец предыдущей строки (или остаётся в (0, 0)).
     if (currentLine.val === "" && this.lines.length > 1) {
       e.preventDefault();
@@ -1709,8 +1700,8 @@ class Bce {
           endCol: prevLen,
         });
       }
-    // Ветка 5: Delete в конце строки (не последней) — приклеиваем следующую
-    // строку к текущей; курсор в точку склейки.
+      // Ветка 5: Delete в конце строки (не последней) - приклеиваем следующую
+      // строку к текущей; курсор в точку склейки.
     } else if (e.key === "Delete") {
       if (
         cursor.begCol === currentLine.val.length &&
@@ -1739,7 +1730,7 @@ class Bce {
    *
    * Браузер по умолчанию схлопывает выделение по левому краю диапазона,
    * из-за чего после выделения слева-направо нажатие ArrowLeft «прыгало»
-   * в начало выделения. Здесь курсор двигается от точки фокуса — как в
+   * в начало выделения. Здесь курсор двигается от точки фокуса - как в
    * обычных редакторах кода.
    * @param {KeyboardEvent} e
    * @returns {boolean} - `true`, если событие обработано (было выделение)
@@ -1751,7 +1742,7 @@ class Bce {
       !cursor ||
       (cursor.begLn === cursor.endLn && cursor.begCol === cursor.endCol)
     ) {
-      return false; // выделения нет — пусть браузер двигает курсор сам
+      return false; // выделения нет - пусть браузер двигает курсор сам
     }
 
     e.preventDefault();
@@ -1831,8 +1822,7 @@ class Bce {
         return;
       }
       const nextLine = moving.ln + 1;
-      if (this._selDesiredCol === undefined)
-        this._selDesiredCol = moving.col;
+      if (this._selDesiredCol === undefined) this._selDesiredCol = moving.col;
       const targetOffset = Math.min(
         this._selDesiredCol,
         this.lines[nextLine].val.length,
@@ -1847,8 +1837,7 @@ class Bce {
         return;
       }
       const prevLine = moving.ln - 1;
-      if (this._selDesiredCol === undefined)
-        this._selDesiredCol = moving.col;
+      if (this._selDesiredCol === undefined) this._selDesiredCol = moving.col;
       const targetOffset = Math.min(
         this._selDesiredCol,
         this.lines[prevLine].val.length,
@@ -1965,7 +1954,7 @@ class Bce {
 
   /**
    * Обрабатывает нажатие Tab (отступ) и Shift+Tab (сдвиг).
-   * @param {boolean} shift — был ли зажат Shift
+   * @param {boolean} shift - был ли зажат Shift
    * @returns {void}
    */
   handleTab(shift) {
@@ -1973,8 +1962,7 @@ class Bce {
     if (!cursor) return;
 
     const hasSelection = !(
-      cursor.begLn === cursor.endLn &&
-      cursor.begCol === cursor.endCol
+      cursor.begLn === cursor.endLn && cursor.begCol === cursor.endCol
     );
     const tabSize = this.options.tabSize;
 
@@ -2050,8 +2038,7 @@ class Bce {
           else break;
         }
         if (spaceCount === 0) return;
-        const prevTabStop =
-          Math.floor((cursor.begCol - 1) / tabSize) * tabSize;
+        const prevTabStop = Math.floor((cursor.begCol - 1) / tabSize) * tabSize;
         const spacesToRemove = cursor.begCol - prevTabStop;
         const removeCount = Math.min(spaceCount, spacesToRemove);
         if (removeCount > 0) {
@@ -2099,10 +2086,7 @@ class Bce {
       };
     }
 
-    if (
-      cursor.begLn !== cursor.endLn ||
-      cursor.begCol !== cursor.endCol
-    ) {
+    if (cursor.begLn !== cursor.endLn || cursor.begCol !== cursor.endCol) {
       this.deleteSelection(cursor);
       cursor = this.getCursor() || cursor;
     }
@@ -2148,7 +2132,7 @@ class Bce {
     const ie = /** @type {InputEvent} */ (_e);
     if (ie?.isComposing || this._composing) return;
 
-    // DOM уже изменён браузером до этого события — индекс текстовых узлов
+    // DOM уже изменён браузером до этого события - индекс текстовых узлов
     // (_nodeMap) мог устареть. До ближайшего render() getCursor() обязан
     // идти резервным путём через TreeWalker.
     this._nodeMapDirty = true;
@@ -2195,16 +2179,16 @@ class Bce {
     if (oldLines.length === newLines.length && oldLines.length > 0) {
       // Инкрементальный рендер: число строк не изменилось, позиции совпадают
       // (см. построение newLines выше). Перерисовываем только изменённые
-      // строки — без пересоздания всего DOM.
+      // строки - без пересоздания всего DOM.
       for (let i = 0; i < newLines.length; i++) {
         if (oldLines[i].val !== newLines[i].val) this.renderLine(i);
       }
       // Изменённые строки переиндексированы в renderLine(), неизменённые
-      // браузер не трогал — индекс снова актуален.
+      // браузер не трогал - индекс снова актуален.
       this._nodeMapDirty = false;
       this.updateActiveLine();
     } else {
-      // Структурное изменение (добавление/удаление строк) — редкий случай:
+      // Структурное изменение (добавление/удаление строк) - редкий случай:
       // полный render().
       this.render();
     }
@@ -2228,9 +2212,9 @@ class Bce {
    */
   onPaste(e) {
     e.preventDefault();
-    const text = (e.clipboardData || /** @type {any} */ (window).clipboardData).getData(
-      "text",
-    );
+    const text = (
+      e.clipboardData || /** @type {any} */ (window).clipboardData
+    ).getData("text");
     if (text) {
       this.insertText(text.replace(/\r\n?/g, "\n"));
     }
