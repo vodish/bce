@@ -1348,23 +1348,38 @@ class Bce {
   }
 
   /**
-   * Главный обработчик `keydown`.
+   * Главный обработчик `keydown` — оркестратор.
+   * Логика разбита на подметоды, каждый возвращает `true`, если событие
+   * обработано: `_handleActionKeys` → `_handleSpecialKeys` → `_handleNavigation`.
    * @param {KeyboardEvent} e
    * @returns {void}
    */
   onKeyDown(e) {
     if (!e.shiftKey) this.resetSelectionAnchor();
+
+    if (this._handleActionKeys(e)) return;
+    if (this._handleSpecialKeys(e)) return;
+    this._handleNavigation(e);
+  }
+
+  /**
+   * Действия по привязкам (`keyBindings`), сочетания `,>` / `,<` и Emmet.
+   * @param {KeyboardEvent} e
+   * @returns {boolean} — `true`, если событие обработано
+   * @private
+   */
+  _handleActionKeys(e) {
     const action = this.matchBinding(e);
     if (action) {
       e.preventDefault();
       this.doAction(action);
-      return;
+      return true;
     }
 
     if (e.key === ">" || e.key === "<") {
       if (this._tryMoveShortcut(e.key)) {
         e.preventDefault();
-        return;
+        return true;
       }
     }
 
@@ -1374,21 +1389,49 @@ class Bce {
       this.tryEmmet()
     ) {
       e.preventDefault();
-      return;
+      return true;
     }
 
+    return false;
+  }
+
+  /**
+   * Tab / Backspace / Delete / Enter.
+   * @param {KeyboardEvent} e
+   * @returns {boolean} — `true`, если событие обработано
+   * @private
+   */
+  _handleSpecialKeys(e) {
     if (e.key === "Tab" || e.key === "tab") {
       e.preventDefault();
       this.ignoreNextInput = true;
       this.handleTab(e.shiftKey);
-      return;
+      return true;
     }
 
     if (e.key === "Backspace" || e.key === "Delete") {
       this._handleBackspaceDelete(e);
-      return;
+      return true;
     }
 
+    if (e.key === "Enter") {
+      e.preventDefault();
+      this.ignoreNextInput = true;
+      this.handleEnter();
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Навигация стрелками: схлопывание выделения, Shift+Arrows/Home/End,
+   * Shift+Ctrl+Arrows (выделение по словам).
+   * @param {KeyboardEvent} e
+   * @returns {boolean} — `true`, если событие обработано
+   * @private
+   */
+  _handleNavigation(e) {
     // Без Shift: при активном выделении стрелка схлопывает его в точке
     // курсора (фокуса) и сдвигает от неё, а не по левому краю диапазона,
     // как делает браузер по умолчанию.
@@ -1399,7 +1442,7 @@ class Bce {
       ["ArrowLeft", "ArrowRight"].includes(e.key) &&
       this._handleArrowCollapse(e)
     ) {
-      return;
+      return true;
     }
 
     if (
@@ -1416,7 +1459,7 @@ class Bce {
       ].includes(e.key)
     ) {
       this._handleShiftArrows(e);
-      return;
+      return true;
     }
 
     if (
@@ -1426,14 +1469,10 @@ class Bce {
       ["ArrowLeft", "ArrowRight"].includes(e.key)
     ) {
       this._handleShiftCtrlArrows(e);
-      return;
+      return true;
     }
 
-    if (e.key === "Enter") {
-      e.preventDefault();
-      this.ignoreNextInput = true;
-      this.handleEnter();
-    }
+    return false;
   }
 
   /**
