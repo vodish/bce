@@ -280,6 +280,57 @@ class Bce {
   }
 
   /**
+   * Первая видимая строка при переменной высоте (переносы).
+   * O(log n) обращений к layout. Вызывать, пока DOM жив (до destroy()).
+   *
+   * @param {Object}  [opts]
+   * @param {boolean} [opts.fullyVisible=false] - true: первая ПОЛНОСТЬЮ видимая
+   * @returns {number} индекс в this.lines (0-based) или -1
+   */
+  getFirstVisibleLineExact({ fullyVisible = false } = {}) {
+    const content = this.content;
+    const total = this.lines.length;
+    if (!content || total === 0) return -1;
+
+    const scrollTop = content.scrollTop;
+    const contentTop = content.getBoundingClientRect().top;
+
+    /**
+     * Верх строки в системе координат content (учитывая scrollTop).
+     * @param {number} i
+     * @returns {number}
+     */
+    const lineTop = (i) => {
+      const el = /** @type {HTMLElement|undefined} */ (content.children[i]);
+      if (!el) return Number.POSITIVE_INFINITY;
+      return el.getBoundingClientRect().top - contentTop + scrollTop;
+    };
+
+    let lo = 0;
+    let hi = total - 1;
+    let result = total - 1;
+
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const el = /** @type {HTMLElement|undefined} */ (content.children[mid]);
+      if (!el) {
+        hi = mid - 1;
+        continue;
+      }
+      const top = lineTop(mid);
+      const bottom = top + el.offsetHeight;
+      const visible = fullyVisible ? top >= scrollTop : bottom > scrollTop;
+      if (visible) {
+        result = mid;
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return result;
+  }
+
+  /**
    * Полностью уничтожает редактор: снимает все обработчики (через
    * AbortController), очищает контейнер и внутреннее состояние.
    * Для SPA-навигации: вызывайте перед тем, как выбросить экземпляр.
