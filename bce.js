@@ -23,14 +23,39 @@
  */
 
 /**
- * Элементарная операция над массивом строк модели.
+ * Элементарные операции над массивом строк модели.
+ * Разные варианты операции имеют разные обязательные поля, поэтому
+ * BcePatchOp - размеченное объединение (discriminated union по `type`):
+ * это даёт точный контроль полей после проверки `op.type === ...`.
  *
- * @typedef {Object} BcePatchOp
- * @property {"insert"|"delete"|"replace"|"setLines"} type
- * @property {number}    [index] - индекс строки (insert / delete / replace)
- * @property {number}    [count] - число удаляемых строк (delete)
- * @property {Rec|Rec[]} [lines] - строки: новые (insert), заменяющие (replace)
- *                                 или весь документ (setLines)
+ * @typedef {Object} BceInsertOp
+ * @property {"insert"} type - вставка строк
+ * @property {number} index  - индекс вставки
+ * @property {Rec[]} lines   - вставляемые строки
+ */
+
+/**
+ * @typedef {Object} BceDeleteOp
+ * @property {"delete"} type - удаление строк
+ * @property {number} index  - индекс первой удаляемой строки
+ * @property {number} count  - число удаляемых строк
+ */
+
+/**
+ * @typedef {Object} BceReplaceOp
+ * @property {"replace"} type  - замена строк
+ * @property {number} index    - индекс первой заменяемой строки
+ * @property {Rec|Rec[]} lines - заменяющие строки
+ */
+
+/**
+ * @typedef {Object} BceSetLinesOp
+ * @property {"setLines"} type - полная замена документа
+ * @property {Rec[]} lines     - весь документ
+ */
+
+/**
+ * @typedef {BceInsertOp|BceDeleteOp|BceReplaceOp|BceSetLinesOp} BcePatchOp
  */
 
 /**
@@ -312,10 +337,10 @@ class Bce {
     this.lines = [];
     this.seq = 0;
     text.split("\n").forEach((p) => this.addLine(p));
-    const setOp = {
+    const setOp = /** @type {BceSetLinesOp} */ ({
       type: "setLines",
       lines: this.lines.map((l) => ({ id: l.id, val: l.val })),
-    };
+    });
     this.render();
     const startCursor = { begLn: 0, begCol: 0, endLn: 0, endCol: 0 };
     this.setCursor(startCursor);
@@ -349,10 +374,10 @@ class Bce {
     this.lines = lines.map(({ id, val }) => ({ id, val }));
     let maxId = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
     this.seq = Math.max(this.seq, maxId);
-    const setOp = {
+    const setOp = /** @type {BceSetLinesOp} */ ({
       type: "setLines",
       lines: this.lines.map((l) => ({ id: l.id, val: l.val })),
-    };
+    });
     this.render();
     const startCursor = { begLn: 0, begCol: 0, endLn: 0, endCol: 0 };
     this.setCursor(startCursor);
@@ -999,7 +1024,7 @@ class Bce {
         }
         return {
           lineIndex: parseInt(lineEl.dataset.lineIndex ?? "0", 10),
-          offset: lineEl.textContent.length,
+          offset: (lineEl.textContent ?? "").length,
         };
       }
 
@@ -1252,9 +1277,9 @@ class Bce {
         }
         case "replace": {
           const arr = Array.isArray(op.lines) ? op.lines : [op.lines];
-          for (let i = 0; i < arr.length; i++) {
-            lines[op.index + i] = { id: arr[i].id, val: arr[i].val };
-          }
+          arr.forEach((l, i) => {
+            lines[op.index + i] = { id: l.id, val: l.val };
+          });
           break;
         }
         default: {
@@ -1353,11 +1378,12 @@ class Bce {
    * @param {BcePatchOp[]} forwardOps
    * @param {BceCursor | null} cursorAfter - курсор после применения forward
    * @param {BcePatchOp[]} [inverse] - заранее построенный inverse
+   *                                   (по умолчанию строится автоматически)
    * @returns {void}
    * @private
    */
-  _pushEntry(forwardOps, cursorAfter, inverse = null) {
-    if (!inverse) inverse = this._invertOps(forwardOps);
+  _pushEntry(forwardOps, cursorAfter, inverse) {
+    inverse ??= this._invertOps(forwardOps);
     const cursorBefore =
       this.historyIndex >= 0
         ? this.history[this.historyIndex].cursorAfter
@@ -2632,7 +2658,8 @@ class Bce {
   /**
    * Обрабатывает событие `input`: синхронизирует модель с DOM.
    * Также вызывается из `compositionend` (там приходит CompositionEvent).
-   * @param {InputEvent | CompositionEvent} _e
+   * @param {Event} _e - событие input или compositionend (внутри приводится
+   *   к InputEvent)
    * @param {Object}   [opts]
    * @param {boolean}  [opts.deferCursor=false] - восстановить курсор в
    *   следующем кадре (для IME: во время финализации композиции синхронная
