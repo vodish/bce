@@ -513,6 +513,12 @@ class Bce {
    * @returns {void}
    */
   render() {
+    // Сохраняем скролл: innerHTML = "" сбрасывает его в начало,
+    // а полный render() вызывается и при точечных правках (undo, redo).
+    const scrollTop = this.content.scrollTop;
+    const scrollLeft = this.content.scrollLeft;
+    const wrapperTop = this.wrapper?.scrollTop;
+
     if (this.lines.length === 0) {
       this.lines.push({ id: this.newId(), val: "" });
     }
@@ -539,6 +545,13 @@ class Bce {
     this.updateActiveLine();
     // DOM пересоздан — индекс текстовых узлов снова актуален
     this._nodeMapDirty = false;
+
+    // Восстанавливаем скролл, чтобы вьюпорт не прыгал
+    this.content.scrollTop = scrollTop;
+    this.content.scrollLeft = scrollLeft;
+    if (wrapperTop !== undefined && this.wrapper) {
+      this.wrapper.scrollTop = wrapperTop;
+    }
   }
 
   /**
