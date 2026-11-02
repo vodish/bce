@@ -161,6 +161,10 @@ class Bce {
     this._composing = false;
     /** @type {AbortController} — прерывает все слушатели в destroy() */
     this._abort = new AbortController();
+    /** @type {Map<string, string>} — кэш результата highlight() по тексту строки */
+    this._highlightCache = new Map();
+    /** @type {number} — максимум записей в кэше подсветки (FIFO-вытеснение) */
+    this._highlightCacheMax = 500;
 
     this.build();
     this.bindEvents();
@@ -591,6 +595,12 @@ class Bce {
    */
   highlight(val) {
     if (!val) return "";
+
+    // Кэш: большинство строк не меняются при каждом рендере, а регэкспы
+    // подсветки — самая дорогая часть render(). Ключ — текст строки.
+    const cached = this._highlightCache.get(val);
+    if (cached !== undefined) return cached;
+
     let safe = val
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
@@ -619,6 +629,12 @@ class Bce {
         );
       },
     );
+    // Сохраняем в кэш с FIFO-вытеснением при переполнении
+    if (this._highlightCache.size >= this._highlightCacheMax) {
+      const firstKey = this._highlightCache.keys().next().value;
+      this._highlightCache.delete(firstKey);
+    }
+    this._highlightCache.set(val, safe);
     return safe;
   }
 
