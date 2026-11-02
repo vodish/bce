@@ -898,13 +898,21 @@ class Bce {
 
   /**
    * Регистрирует callback, вызываемый при каждом изменении.
+   *
+   * BREAKING CHANGE: по умолчанию колбэк НЕ вызывается в момент подписки
+   * (раньше вызывался немедленно). Немедленный вызов приводил к рекурсии,
+   * если подписчик в колбэке вызывал `setText`. Чтобы сохранить старое
+   * поведение, передайте `{ immediate: true }`.
+   *
    * @param {BceOnChangeCallback} fn
+   * @param {Object}   [opts]
+   * @param {boolean}  [opts.immediate=false] — вызвать `fn(this)` сразу при подписке
    * @returns {void}
    */
-  onChange(fn) {
+  onChange(fn, { immediate = false } = {}) {
     if (typeof fn === "function") {
       this._onChangeCallback = fn;
-      fn(this);
+      if (immediate) fn(this);
     }
   }
 
