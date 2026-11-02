@@ -177,30 +177,56 @@ class Bce {
 
   /**
    * Заменяет всё содержимое редактора.
+   *
+   * После замены курсор устанавливается в начало документа (DOM-выделение
+   * после `render()` указывало на старые узлы).
+   *
    * @param {string} text
+   * @param {Object}   [opts]
+   * @param {boolean}  [opts.resetHistory=false] — очистить историю undo/redo
+   *   (по умолчанию сохранена для обратной совместимости: старый документ
+   *   остаётся доступен через Ctrl+Z).
    * @returns {void}
    */
-  setText(text) {
+  setText(text, { resetHistory = false } = {}) {
     this.lines = [];
     this.seq = 0;
     text.split("\n").forEach((p) => this.addLine(p));
     this.render();
-    // Курсор ещё не установлен на новое содержимое — снимок без курсора
+    this.setCursor({ begLn: 0, begCol: 0, endLn: 0, endCol: 0 });
+    this._selDesiredCol = undefined;
+    if (resetHistory) {
+      this.history = [];
+      this.historyIndex = -1;
+    }
+    // Курсор ещё не «прижился» к новому содержимому — снимок без курсора
     this.pushHistory(null);
     this._fireOnChange();
   }
 
   /**
    * Устанавливает строки из массива объектов.
+   *
+   * После замены курсор устанавливается в начало документа (DOM-выделение
+   * после `render()` указывало на старые узлы).
+   *
    * @param {Array<{ id: number, val: string }>} lines
+   * @param {Object}   [opts]
+   * @param {boolean}  [opts.resetHistory=false] — очистить историю undo/redo
    * @returns {void}
    */
-  setLines(lines = []) {
+  setLines(lines = [], { resetHistory = false } = {}) {
     this.lines = lines.map(({ id, val }) => ({ id, val }));
     let maxId = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
     this.seq = Math.max(this.seq, maxId);
     this.render();
-    // Курсор ещё не установлен на новое содержимое — снимок без курсора
+    this.setCursor({ begLn: 0, begCol: 0, endLn: 0, endCol: 0 });
+    this._selDesiredCol = undefined;
+    if (resetHistory) {
+      this.history = [];
+      this.historyIndex = -1;
+    }
+    // Курсор ещё не «прижился» к новому содержимому — снимок без курсора
     this.pushHistory(null);
     this._fireOnChange();
   }
