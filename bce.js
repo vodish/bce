@@ -297,15 +297,20 @@ class Bce {
    * @returns {boolean}
    */
   checkEmpty() {
-    return this.lines.length == 1 && this.lines[0].val == "";
+    return this.lines.length === 1 && this.lines[0].val === "";
   }
 
   /**
    * Возвращает пустой массив для одной пустой строки
    * @returns {Rec[]}
    */
+  /**
+   * Возвращает копию строк редактора (без внутреннего массива).
+   * Мутация результата не влияет на редактор.
+   * @returns {Array<{ id: number, val: string }>}
+   */
   getLines() {
-    return this.checkEmpty() ? [] : this.lines;
+    return this.checkEmpty() ? [] : this.lines.map((l) => ({ id: l.id, val: l.val }));
   }
 
   /* ================================================================
