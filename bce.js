@@ -1494,6 +1494,13 @@ class Bce {
       cursor.begLn !== cursor.endLn ||
       cursor.begCol !== cursor.endCol;
 
+    // Ветка 1: выделение начинается с колонки 0.
+    // 1а — выделена вся строка целиком (begCol=0, endCol=len, одна строка):
+    //      очищаем строку, курсор остаётся в {begLn, 0}.
+    // 1б — endCol=0 и endLn>begLn: выделены целые строки begLn..endLn-1
+    //      (например, пустые строки 2–3): удаляем их, курсор в (begLn, 0);
+    //      если удалены все строки — оставляем одну пустую.
+    //      Частичное выделение последней строки сюда не попадает — см. ветку 2.
     if (isSelection && cursor.begCol === 0) {
       if (
         cursor.begLn === cursor.endLn &&
@@ -1534,6 +1541,9 @@ class Bce {
       }
     }
 
+    // Ветка 2: любое другое выделение (частичное внутри строки или через
+    // несколько строк, включая выделение строки целиком) — универсальное
+    // удаление выделения через deleteSelection().
     if (isSelection) {
       e.preventDefault();
       this.ignoreNextInput = true;
@@ -1544,6 +1554,8 @@ class Bce {
     const currentLineIdx = cursor.begLn;
     const currentLine = this.lines[currentLineIdx];
 
+    // Ветка 3: Backspace на ПУСТОЙ строке (не единственной) — удаляем её;
+    // курсор уходит в конец предыдущей строки (или остаётся в (0, 0)).
     if (currentLine.val === "" && this.lines.length > 1) {
       e.preventDefault();
       this.ignoreNextInput = true;
@@ -1563,6 +1575,8 @@ class Bce {
       return;
     }
 
+    // Ветка 4: Backspace в колонке 0 непустой строки (не первой) —
+    // приклеиваем текущую строку к предыдущей; курсор в точку склейки.
     if (e.key === "Backspace") {
       if (cursor.begCol === 0 && cursor.begLn > 0) {
         e.preventDefault();
@@ -1579,6 +1593,8 @@ class Bce {
           endCol: prevLen,
         });
       }
+    // Ветка 5: Delete в конце строки (не последней) — приклеиваем следующую
+    // строку к текущей; курсор в точку склейки.
     } else if (e.key === "Delete") {
       if (
         cursor.begCol === currentLine.val.length &&
