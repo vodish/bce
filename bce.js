@@ -199,8 +199,10 @@ class Bce {
      * @type {WeakMap<Node, { lineIdx: number, baseOffset: number }>}
      */
     this._nodeMap = new WeakMap();
-    /** @type {boolean} - true, если _nodeMap устарел (см. onInput) */
+    /** @type {boolean} — true, если _nodeMap устарел (см. onInput) */
     this._nodeMapDirty = false;
+    /** @type {string[] | null} — кэш Object.keys(this.emmet) (сбрасывается в add/removeEmmet) */
+    this._emmetKeys = null;
 
     this.build();
     this.bindEvents();
@@ -238,6 +240,7 @@ class Bce {
     this.historyIndex = -1;
     this._onChangeCallback = null;
     this._highlightCache?.clear();
+    this._emmetKeys = null;
   }
 
   /* ================================================================
@@ -408,6 +411,28 @@ class Bce {
    */
   setEnableEmmet(enable) {
     this.options.enableEmmet = enable;
+  }
+
+  /**
+   * Добавляет / переопределяет Emmet-сокращение.
+   * Шаблон: HTML с `|` в позиции курсора после разворота.
+   * @param {string} key      — сокращение (например, `"div"`)
+   * @param {string} template — шаблон разворота (например, `"<div>|</div>"`)
+   * @returns {void}
+   */
+  addEmmet(key, template) {
+    this.emmet[key] = template;
+    this._emmetKeys = null;
+  }
+
+  /**
+   * Удаляет Emmet-сокращение.
+   * @param {string} key
+   * @returns {void}
+   */
+  removeEmmet(key) {
+    delete this.emmet[key];
+    this._emmetKeys = null;
   }
 
   /**
@@ -1350,7 +1375,9 @@ class Bce {
     }
     const line = this.lines[cursor.begLn];
     const before = line.val.substring(0, cursor.begCol);
-    const abbr = Object.keys(this.emmet).find((k) => before.endsWith(k));
+    // Кэш ключей: пересоздаётся только после addEmmet / removeEmmet
+    if (!this._emmetKeys) this._emmetKeys = Object.keys(this.emmet);
+    const abbr = this._emmetKeys.find((k) => before.endsWith(k));
     if (!abbr) return false;
 
     const expansion = this.emmet[abbr];

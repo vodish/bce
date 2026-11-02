@@ -364,3 +364,32 @@ test("getLines: пустой редактор → пустой массив", ()
   const ed = makeEditor([""]);
   assert.deepEqual(ed.getLines(), []);
 });
+
+/* ======================== addEmmet / tryEmmet ======================== */
+
+test("tryEmmet: разворачивает базовое сокращение", () => {
+  const ed = makeEditor(["a"]);
+  ed._cursor = cursor(0, 1);
+  ed.emmet = { a: '<a href="|"></a>' };
+  assert.equal(ed.tryEmmet(), true);
+  assert.deepEqual(vals(ed), ['<a href=""></a>']);
+  assert.deepEqual(ed._cursor, cursor(0, 9));
+});
+
+test("addEmmet: новое сокращение разворачивается", () => {
+  const ed = makeEditor(["div"]);
+  ed._cursor = cursor(0, 3);
+  ed.addEmmet("div", "<div>|</div>");
+  assert.equal(ed.tryEmmet(), true);
+  assert.deepEqual(vals(ed), ["<div></div>"]);
+  assert.deepEqual(ed._cursor, cursor(0, 5));
+});
+
+test("removeEmmet: сокращение больше не разворачивается", () => {
+  const ed = makeEditor(["div"]);
+  ed._cursor = cursor(0, 3);
+  ed.addEmmet("div", "<div>|</div>");
+  ed.removeEmmet("div");
+  assert.equal(ed.tryEmmet(), false);
+  assert.deepEqual(vals(ed), ["div"]);
+});
