@@ -234,11 +234,7 @@ class Bce {
     this._nodeMap = new WeakMap();
     /** @type {boolean} - true, если _nodeMap устарел (см. onInput) */
     this._nodeMapDirty = false;
-    /**
-     * Индекс активной (подсвеченной) строки; кэш для O(1)
-     * updateActiveLine() вместо querySelectorAll по всем строкам.
-     * @type {number}
-     */
+    /** @type {number} - кэш индекса активной строки (O(1) updateActiveLine) */
     this._activeLine = -1;
     /** @type {string[] | null} - кэш Object.keys(this.emmet) (сбрасывается в add/removeEmmet) */
     this._emmetKeys = null;
@@ -565,9 +561,6 @@ class Bce {
       "compositionend",
       (e) => {
         this._composing = false;
-        // IME: курсор восстанавливаем в следующем кадре - синхронная
-        // установка выделения во время финализации композиции
-        // конфликтует с браузером
         this.onInput(e, { deferCursor: true });
       },
       signal,
@@ -689,7 +682,6 @@ class Bce {
     });
 
     if (cursor) this.setCursor(cursor);
-    // DOM пересоздан - кэш активной строки больше не указывает на узел
     this._activeLine = -1;
     this.updateActiveLine();
     // Индекс текстовых узлов снова актуален
@@ -817,7 +809,6 @@ class Bce {
    */
   _reindexTail(from) {
     const total = this.lines.length;
-    // Строки после from сдвинулись - кэш активной строки устарел
     this._activeLine = -1;
     for (let i = from; i < total; i++) {
       const div = /** @type {HTMLElement | undefined} */ (
@@ -846,15 +837,11 @@ class Bce {
   }
 
   /**
-   * Подсвечивает активную строку в контенте и гуттере.
-   * O(1) за счёт кэша _activeLine: снимает подсветку только с предыдущей
-   * активной строки, а не обходит весь DOM через querySelectorAll
-   * (критично для больших документов - вызывается на каждый ввод).
+   * Подсвечивает активную строку (O(1) через кэш _activeLine).
    * @returns {void}
    */
   updateActiveLine() {
     const cursor = this.getCursor();
-    // Активной подсвечивается строка курсора (фокуса), а не начало выделения
     let ln = cursor ? this.getFocus(cursor).ln : -1;
     if (ln < 0 || ln >= this.lines.length) ln = -1;
     if (ln === this._activeLine) return;
@@ -1446,8 +1433,6 @@ class Bce {
     this.historyIndex--;
     this.lines = this._applyOpsTo(this.lines, entry.inverse);
     this._renderPatch(entry.inverse);
-    // Синхронно: _renderPatch уже пересоздал затронутые узлы, курсор
-    // восстанавливается до выхода из обработчика (без «прыжка» на кадр)
     const cursor = entry.cursorBefore;
     if (cursor) this.setCursor(cursor);
     this._fireOnChange();
@@ -1463,7 +1448,6 @@ class Bce {
     const entry = this.history[this.historyIndex];
     this.lines = this._applyOpsTo(this.lines, entry.forward);
     this._renderPatch(entry.forward);
-    // Синхронно - см. undo()
     const cursor = entry.cursorAfter;
     if (cursor) this.setCursor(cursor);
     this._fireOnChange();
@@ -2014,7 +1998,6 @@ class Bce {
     const target = idx + dir;
     if (target < 0 || target >= this.lines.length) return true;
 
-    // Перестановка двух строк - два replace (унифицировано с actionMove)
     this.commitChange(
       [
         {
@@ -2147,15 +2130,12 @@ class Bce {
         newLineIdx = currentLineIdx - 1;
         newOffset = this.lines[newLineIdx].val.length;
       }
-      this.commitChange(
-        [{ type: "delete", index: currentLineIdx, count: 1 }],
-        {
-          begLn: newLineIdx,
-          begCol: newOffset,
-          endLn: newLineIdx,
-          endCol: newOffset,
-        },
-      );
+      this.commitChange([{ type: "delete", index: currentLineIdx, count: 1 }], {
+        begLn: newLineIdx,
+        begCol: newOffset,
+        endLn: newLineIdx,
+        endCol: newOffset,
+      });
       return;
     }
 
@@ -2173,9 +2153,7 @@ class Bce {
             {
               type: "replace",
               index: cursor.begLn - 1,
-              lines: [
-                { id: prevLine.id, val: prevLine.val + currLine.val },
-              ],
+              lines: [{ id: prevLine.id, val: prevLine.val + currLine.val }],
             },
             { type: "delete", index: cursor.begLn, count: 1 },
           ],
@@ -2512,15 +2490,12 @@ class Bce {
         }
       }
 
-      this.commitChange(
-        [{ type: "replace", index: beg, lines: repl }],
-        {
-          begLn: beg,
-          begCol: Math.max(0, cursor.begCol + deltas[0]),
-          endLn: end,
-          endCol: Math.max(0, cursor.endCol + deltas[deltas.length - 1]),
-        },
-      );
+      this.commitChange([{ type: "replace", index: beg, lines: repl }], {
+        begLn: beg,
+        begCol: Math.max(0, cursor.begCol + deltas[0]),
+        endLn: end,
+        endCol: Math.max(0, cursor.endCol + deltas[deltas.length - 1]),
+      });
     } else {
       const line = this.lines[cursor.begLn];
       if (shift) {
@@ -2704,8 +2679,6 @@ class Bce {
       newLines.push({ id: this.newId(), val: "" });
     }
 
-    // Дифф oldLines -> newLines превращает структурное изменение DOM
-    // в патч (модель больше не заменяется целиком)
     const ops = this.diffLines(oldLines, newLines);
 
     if (this.ignoreNextInput) {
@@ -2742,12 +2715,11 @@ class Bce {
 
     if (cursor) {
       if (deferCursor) {
-        // IME: не трогаем выделение во время финализации композиции
         requestAnimationFrame(() => this.setCursor(cursor));
       } else {
-        // Синхронно: renderLine уже пересоздал узлы строки - caret
-        // восстанавливается до выхода из обработчика, и следующий
-        // ключ при быстром наборе не попадает в сброшенную позицию
+        // Синхронно: caret должен быть восстановлен до выхода из
+        // обработчика, иначе следующий ключ при быстром наборе
+        // попадёт в сброшенную renderLine позицию
         this.setCursor(cursor);
       }
     }
