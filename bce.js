@@ -65,10 +65,8 @@ class Bce {
       const a = arr1[i],
         b = arr2[i];
 
-      // Если это один и тот же объект в памяти - пропускаем
       if (a === b) continue;
 
-      // Если один из них null/undefined или не совпадают значения полей
       if (!a || !b || a.id !== b.id || a.val !== b.val) {
         return true;
       }
@@ -233,7 +231,6 @@ class Bce {
       "bce-no-gutter",
       "bce-show-id",
     );
-    // Снимаем маркер занятости контейнера
     delete (/** @type {any} */ (this.container).__bce);
     this.lines = [];
     this.history = [];
@@ -328,10 +325,6 @@ class Bce {
     return this.lines.length === 1 && this.lines[0].val === "";
   }
 
-  /**
-   * Возвращает пустой массив для одной пустой строки
-   * @returns {Rec[]}
-   */
   /**
    * Возвращает копию строк редактора (без внутреннего массива).
    * Мутация результата не влияет на редактор.
@@ -479,7 +472,6 @@ class Bce {
         const dte = /** @type {DragEvent} */ (e);
         const text = dte.dataTransfer?.getData("text/plain");
         if (!text) return;
-        // Устанавливаем курсор в точку drop
         const range =
           /** @type {any} */ (document).caretRangeFromPoint?.(
             dte.clientX,
@@ -510,7 +502,7 @@ class Bce {
       "compositionend",
       (e) => {
         this._composing = false;
-        this.onInput(e); // обработать финальный текст один раз
+        this.onInput(e);
       },
       signal,
     );
@@ -526,7 +518,6 @@ class Bce {
           inputEvent.preventDefault();
           this.redo();
         } else if (inputEvent.inputType === "insertCompositionText") {
-          // Промежуточный текст IME - не вмешиваемся в композицию.
           return;
         } else if (
           inputEvent.inputType === "insertText" &&
@@ -636,7 +627,6 @@ class Bce {
     // DOM пересоздан - индекс текстовых узлов снова актуален
     this._nodeMapDirty = false;
 
-    // Восстанавливаем скролл, чтобы вьюпорт не прыгал
     this.content.scrollTop = scrollTop;
     this.content.scrollLeft = scrollLeft;
     if (wrapperTop !== undefined && this.wrapper) {
@@ -787,7 +777,6 @@ class Bce {
         );
       },
     );
-    // Сохраняем в кэш с FIFO-вытеснением при переполнении
     if (this._highlightCache.size >= this._highlightCacheMax) {
       const firstKey = this._highlightCache.keys().next().value;
       if (firstKey !== undefined) this._highlightCache.delete(firstKey);
@@ -911,10 +900,6 @@ class Bce {
      * @param {HTMLElement} lineEl
      * @returns {BceNodePoint}
      */
-    /**
-     * @param {HTMLElement} lineEl
-     * @returns {BceNodePoint}
-     */
     const getEndOfLine = (lineEl) => {
       let last = /** @type {any} */ (lineEl);
       while (last.lastChild) last = last.lastChild;
@@ -925,11 +910,6 @@ class Bce {
 
     /**
      * Находит DOM-узел и смещение по координатам модели.
-     * @param {number} lineIndex
-     * @param {number} offset
-     * @returns {BceNodePoint}
-     */
-    /**
      * @param {number} lineIndex
      * @param {number} offset
      * @returns {BceNodePoint}
@@ -1798,11 +1778,6 @@ class Bce {
      * @param {number} mCol
      * @returns {void}
      */
-    /**
-     * @param {number} mLn
-     * @param {number} mCol
-     * @returns {void}
-     */
     const setCursorAndReturn = (mLn, mCol) => {
       e.preventDefault();
       this.setCursor({
@@ -1901,11 +1876,6 @@ class Bce {
      * @param {number} mCol
      * @returns {void}
      */
-    /**
-     * @param {number} mLn
-     * @param {number} mCol
-     * @returns {void}
-     */
     const setCursorAndReturn = (mLn, mCol) => {
       e.preventDefault();
       this.setCursor({
@@ -1966,7 +1936,6 @@ class Bce {
     );
     const tabSize = this.options.tabSize;
 
-    // 1. Модификация: Если выделен текст только на ОДНОЙ строке (при обычном Tab без Shift)
     if (hasSelection && cursor.begLn === cursor.endLn && !shift) {
       const line = this.lines[cursor.begLn];
 
@@ -1975,12 +1944,10 @@ class Bce {
         line.val.substring(0, cursor.begCol) +
         line.val.substring(cursor.endCol);
 
-      // Теперь курсор логически "схлопнулся" в точку begCol
       const col = cursor.begCol;
       const target = Math.ceil((col + 1) / tabSize) * tabSize;
       const add = " ".repeat(target - col);
 
-      // Вставляем пробелы в ту же позицию
       line.val =
         line.val.substring(0, cursor.begCol) +
         add +
@@ -1996,7 +1963,6 @@ class Bce {
       return;
     }
 
-    // ОСТАЛЬНАЯ СТАНДАРТНАЯ ЛОГИКА РЕДАКТОРА (Многострочное выделение или Shift+Tab)
     if (hasSelection) {
       const { begLn: beg, endLn: end } = cursor;
       const deltas = [];
