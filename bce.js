@@ -364,6 +364,50 @@ class Bce {
   }
 
   /**
+   * Прокручивает вьюпорт так, чтобы строка ln стала первой видимой
+   * (операция, обратная getFirstVisibleLineExact()). Вызывать после
+   * render(), когда layout уже посчитан.
+   *
+   * @param {number} fln - индекс в this.lines (0-based)
+   * @returns {void}
+   */
+  setFirstVisibleLineExact(fln) {
+    const content = this.content;
+    const total = this.lines.length;
+    if (!content || !content.isConnected || total === 0) return;
+
+    // найти скроллер так же, как в getFirstVisibleLineExact()
+    let scroller = /** @type {Element | null} */ (content.parentElement);
+    while (scroller && scroller !== document.body) {
+      const st = getComputedStyle(scroller);
+      if (/(auto|scroll)/.test(st.overflowY)) break;
+      scroller = scroller.parentElement;
+    }
+    const isWindow = !scroller || scroller === document.body;
+
+    // верх вьюпорта в client-координатах (у окна это 0)
+    let viewTop = 0;
+    if (!isWindow) {
+      viewTop = Math.max(
+        0,
+        /** @type {Element} */ (scroller).getBoundingClientRect().top,
+      );
+    }
+    viewTop = this._viewTopWithSticky(viewTop);
+
+    const idx = Math.max(0, Math.min(fln, total - 1));
+    const el = /** @type {HTMLElement|undefined} */ (content.children[idx]);
+    if (!el) return;
+
+    const delta = el.getBoundingClientRect().top - viewTop;
+    if (isWindow) {
+      window.scrollBy(0, delta);
+    } else {
+      /** @type {Element} */ (scroller).scrollTop += delta;
+    }
+  }
+
+  /**
    * Полностью уничтожает редактор: снимает все обработчики (через
    * AbortController), очищает контейнер и внутреннее состояние.
    * Для SPA-навигации: вызывайте перед тем, как выбросить экземпляр.
@@ -2873,4 +2917,4 @@ class Bce {
   }
 }
 
-// export default Bce;
+//export default Bce;
