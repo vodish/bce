@@ -124,6 +124,32 @@ class Bce {
   }
 
   /**
+   * Ищет границу слова в тексте (используется Shift+Ctrl+Arrows).
+   * Не использует состояние экземпляра - можно вызывать как
+   * Bce.prototype.findWordBoundary.call(null, val, pos, dir).
+   * @param {string} val       текст строки
+   * @param {number} pos       текущая позиция
+   * @param {number} direction 1 (вперёд) или -1 (назад)
+   * @returns {number}
+   */
+  findWordBoundary(val, pos, direction) {
+    const len = val.length;
+    if (direction > 0) {
+      let i = pos;
+      while (i < len && /\s/.test(val[i])) i++;
+      while (i < len && !/\s/.test(val[i])) i++;
+      return i;
+    } else {
+      let i = pos;
+      if (i > 0) i--;
+      while (i > 0 && /\s/.test(val[i])) i--;
+      while (i > 0 && !/\s/.test(val[i])) i--;
+      if (i === 0 && !/\s/.test(val[0])) return 0;
+      return i > 0 ? i + 1 : 0;
+    }
+  }
+
+  /**
    * @param {string | HTMLElement} container - селектор или DOM-элемент контейнера
    * @param {BceOptions}           [options] - настройки редактора
    */
