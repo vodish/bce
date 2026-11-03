@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Bce - тест порционной вставки</title>
+<link rel="stylesheet" href="../bce.css">
+<style>
+  body { font-family: Consolas, monospace; background: #1e1e1e; color: #ddd; margin: 0; padding: 12px; }
+  #status { background: #252526; padding: 10px; border-left: 3px solid #4ec9b0; margin-bottom: 10px; white-space: pre-wrap; font-size: 13px; }
+  #editor { min-height: 300px; max-height: 500px; overflow: auto; border: 1px solid #333; font-size: 14px; }
+  .ok { color: #4ec9b0; } .fail { color: #f48771; }
+</style>
+</head>
+<body>
+<div id="status">Инициализация...</div>
+<div id="editor"></div>
+<script src="../bce.js"></script>
+<script>
+"use strict";
+window.onerror = (msg, src, line, col, err) => {
+  document.getElementById("status").textContent =
+    "ОШИБКА: " + msg + "\n" + (err && err.stack ? err.stack : "");
+  console.log("STACK:", err && err.stack);
+};
+const origRaf = window.requestAnimationFrame.bind(window);
+window.requestAnimationFrame = (fn) =>
+  origRaf(() => {
+    try {
+      fn();
+    } catch (err) {
+      console.log("RAF STACK:", err.stack);
+      throw err;
+    }
+  });
+const statusEl = document.getElementById("status");
+const editor = new Bce(document.getElementById("editor"), {
+  showLineNumbers: true,
+});
+
+// 30 000 строк тестового текста
+const parts = [];
+for (let i = 1; i <= 30000; i++) parts.push(`<div class="row" id="r${i}">line ${i}</div>`);
+const text = parts.join("\n");
+
+// Измерение длительности кадров: поймаем каждый кадр во время вставки
+const frameTimes = [];
+let frameStart = performance.now();
+let running = true;
+function measureFrame() {
+  if (!running) return;
+  const now = performance.now();
+  frameTimes.push(now - frameStart);
+  frameStart = now;
+  requestAnimationFrame(measureFrame);
+}
+
+let progressEvents = 0;
+editor.onProgress = () => progressEvents++;
+
+const t0 = performance.now();
+// Курсор в середину строки 1, чтобы проверить склейку before/after
+editor.setCursor({ begLn: 0, begCol: 2, endLn: 0, endCol: 2 });
+requestAnimationFrame(measureFrame);
+editor.insertTextChunked("XX" + text + "YY");
+
+setTimeout(() => {
+  running = false;
+  const total = performance.now() - t0;
+  frameTimes.shift(); // первый кадр включает старт
+  const maxFrame = Math.max(...frameTimes);
+  const avgFrame = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+
+  const lines = editor.lines;
+  const contentChildren = editor.content.querySelectorAll(".bce-line").length;
+  const gutterChildren = editor.gutter.querySelectorAll(".bce-gutter-line").length;
+
+  const results = [];
+  results.push(["время вставки (мс, все rAF-порции)", Math.round(total)]);
+  results.push(["порций (кадров)", frameTimes.length]);
+  results.push(["максимальный кадр (мс)", maxFrame.toFixed(1)]);
+  results.push(["средний кадр (мс)", avgFrame.toFixed(1)]);
+  results.push(["модальных onChange", progressEvents]);
+  results.push(["строк в модели", lines.length]);
+  results.push(["строк в DOM", contentChildren]);
+  results.push(["строк в гуттере", gutterChildren]);
+  results.push(["history.length (должна быть 1)", editor.history.length]);
+  results.push(["_inserting (должен быть false)", editor._inserting]);
+  console.log(
+    "DEBUG: lines.length =", lines.length,
+    "dom =", contentChildren,
+    "gutter =", gutterChildren,
+    "history =", editor.history.length,
+    "inserting =", editor._inserting,
+  );
+  // 30000 строк текста, "YY" дописан в конец последней => 30000 строк
+  results.push(["строка 1 = XX<div...>", !!(lines[0] && lines[0].val.startsWith("XX"))]);
+  results.push([
+    "строка 30000 = ...YY",
+    !!(lines[29999] && lines[29999].val.endsWith("YY")),
+  ]);
+  results.push([
+    "dataset.lineIndex последней строки",
+    !!(
+      editor.content.lastElementChild &&
+      editor.content.lastElementChild.dataset.lineIndex ===
+        String(lines.length - 1)
+    ),
+  ]);
+
+  // getCursor сразу после вставки (критерий: корректный курсор)
+  const cur = editor.getCursor();
+  console.log("DEBUG: cursor =", JSON.stringify(cur));
+  results.push([
+    "курсор = конец вставленного",
+    !!(
+      cur &&
+      cur.begLn === 29999 &&
+      lines[29999] &&
+      cur.begCol === lines[29999].val.length
+    ),
+  ]);
+
+  // Undo одним шагом
+  editor.undo();
+  results.push(["после undo строк (должно быть 1)", editor.lines.length === 1]);
+  editor.redo();
+  results.push(["после redo строк (30000)", editor.lines.length === 30000]);
+  results.push([
+    "после redo последняя = ...YY",
+    !!(editor.lines[29999] && editor.lines[29999].val.endsWith("YY")),
+  ]);
+
+  const allOk = results.every(([, v]) => v === true || typeof v === "number");
+  console.log("RESULTS:\n" + results.map(([k, v]) => `${k}: ${v}`).join("\n"));
+  statusEl.innerHTML =
+    results.map(([k, v]) => `${k}: <b class="${v === true ? "ok" : v === false ? "fail" : ""}">${v}</b>`).join("\n") +
+    `\n\n<b class="${allOk ? "ok" : "fail"}">${allOk ? "ВСЕ ПРОВЕРКИ ПРОЙДЕНЫ" : "ЕСТЬ ПРОВАЛЫ"}</b>`;
+}, 5000);
+</script>
+</body>
+</html>

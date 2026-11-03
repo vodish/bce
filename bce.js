@@ -244,6 +244,14 @@ class Bce {
     this._selDesiredCol = undefined;
     /** @type {boolean} - идёт ли активная IME-композиция (ввод КРЯ/КПЯ, мобильные клавиатуры) */
     this._composing = false;
+    /** @type {boolean} - идёт ли асинхронная порционная вставка */
+    this._inserting = false;
+    /**
+     * Опциональный колбэк прогресса порционной вставки: вызывается после
+     * каждой порции insertTextChunked().
+     * @type {((p: { inserted: number, total: number }) => void) | null}
+     */
+    this.onProgress = null;
     /** @type {AbortController} - прерывает все слушатели в destroy() */
     this._abort = new AbortController();
     /** @type {Map<string, string>} - кэш результата highlight() по тексту строки */
@@ -385,7 +393,6 @@ class Bce {
     }
     const isWindow = !scroller || scroller === document.body;
 
-    // верх вьюпорта в client-координатах (у окна это 0)
     let viewTop = 0;
     if (!isWindow) {
       viewTop = Math.max(
@@ -697,7 +704,7 @@ class Bce {
           sel?.removeAllRanges();
           sel?.addRange(range);
         }
-        this.insertText(text.replace(/\r\n?/g, "\n"));
+        this.insertTextChunked(text.replace(/\r\n?/g, "\n"));
       },
       signal,
     );
@@ -840,7 +847,6 @@ class Bce {
     if (cursor) this.setCursor(cursor);
     this._activeLine = -1;
     this.updateActiveLine();
-    // Индекс текстовых узлов снова актуален
     this._nodeMapDirty = false;
 
     this.content.scrollTop = scrollTop;
@@ -878,21 +884,50 @@ class Bce {
    * @returns {void}
    */
   renderLine(idx) {
-    const line = this.lines[idx];
     const div = /** @type {HTMLElement | undefined} */ (
       this.content.children[idx]
     );
+    const line = this.lines[idx];
     if (!div || !line) return;
-    div.dataset.lineId = String(line.id);
-    div.dataset.lineIndex = String(idx);
-    div.innerHTML = line.val === "" ? "<br>" : this.highlight(line.val);
+    this._fillLineNode(div, idx);
     const g = /** @type {HTMLElement | undefined} */ (
       this.gutter.children[idx]
     );
-    if (g) {
-      g.textContent = String(this.options.showRecId ? line.id : idx + 1);
-    }
+    if (g) this._fillGutterNode(g, idx);
     this._indexLineNodes(div, idx);
+  }
+
+  /**
+   * Заполняет узел строки `.bce-line` данными строки модели: класс, dataset
+   * (lineId/lineIndex), подсвеченный HTML. Общая логика для renderLine() и
+   * батч-вставки в _renderPatch() - узел наполняется ДО вставки в документ,
+   * чтобы вся порция попадала в DOM одним insertBefore (один reflow).
+   * @param {HTMLElement} div - элемент строки (в документе или во фрагменте)
+   * @param {number} idx - индекс строки в модели
+   * @returns {void}
+   * @private
+   */
+  _fillLineNode(div, idx) {
+    const line = this.lines[idx];
+    div.className = "bce-line";
+    if (!line) return;
+    div.dataset.lineId = String(line.id);
+    div.dataset.lineIndex = String(idx);
+    div.innerHTML = line.val === "" ? "<br>" : this.highlight(line.val);
+  }
+
+  /**
+   * Заполняет узел гуттера: класс и номер строки (или ID при showRecId).
+   * @param {HTMLElement} gi - элемент гуттера (в документе или во фрагменте)
+   * @param {number} idx - индекс строки в модели
+   * @returns {void}
+   * @private
+   */
+  _fillGutterNode(gi, idx) {
+    const line = this.lines[idx];
+    gi.className = "bce-gutter-line";
+    if (!line) return;
+    gi.textContent = String(this.options.showRecId ? line.id : idx + 1);
   }
 
   /**
@@ -924,15 +959,22 @@ class Bce {
         const refGutter = /** @type {Element | null} */ (
           this.gutter.children[op.index] ?? null
         );
+        // Батч-вставка: узлы создаются и заполняются ДО вставки в документ
+        // (_fillLineNode/_fillGutterNode), затем каждая порция попадает
+        // в DOM одним insertBefore через DocumentFragment - один reflow
+        // на всю порцию вместо N.
+        const contentFrag = document.createDocumentFragment();
+        const gutterFrag = document.createDocumentFragment();
         for (let i = 0; i < lines.length; i++) {
           const div = document.createElement("div");
-          div.className = "bce-line";
           const gi = document.createElement("div");
-          gi.className = "bce-gutter-line";
-          this.content.insertBefore(div, refLine);
-          this.gutter.insertBefore(gi, refGutter);
-          this.renderLine(op.index + i);
+          this._fillLineNode(div, op.index + i);
+          this._fillGutterNode(gi, op.index + i);
+          contentFrag.appendChild(div);
+          gutterFrag.appendChild(gi);
         }
+        this.content.insertBefore(contentFrag, refLine);
+        this.gutter.insertBefore(gutterFrag, refGutter);
         structuralFrom =
           structuralFrom < 0 ? op.index : Math.min(structuralFrom, op.index);
       } else if (op.type === "delete") {
@@ -1544,7 +1586,6 @@ class Bce {
     });
     this.historyIndex = this.history.length - 1;
 
-    // Компакция: глубина «прошлого» не превышает maxHistory
     if (this.historyIndex >= this.maxHistory) this._compactHistory();
   }
 
@@ -1818,6 +1859,154 @@ class Bce {
     }
   }
 
+  /**
+   * Порционная вставка больших текстов: разбивает на куски по chunkSize
+   * строк и вставляет их по кадрам (requestAnimationFrame), не блокируя UI.
+   *
+   * Отличия от insertText():
+   * - вся вставка попадает в историю ОДНОЙ записью (один Ctrl+Z отменяет всё);
+   * - onChange вызывается один раз в конце;
+   * - каждая порция рендерится через _renderPatch() (батч-вставка фрагментом).
+   *
+   * Во время вставки установлен флаг `_inserting`: onKeyDown/onInput
+   * игнорируются, чтобы правки пользователя не попали в недоконченный документ.
+   *
+   * @param {string} text
+   * @param {Object}   [opts]
+   * @param {number}   [opts.chunkSize=5000] - строк на порцию
+   * @returns {void}
+   */
+  insertTextChunked(text, { chunkSize = 5000 } = {}) {
+    const cursor = this.getCursor();
+    if (!cursor) return;
+    this.deleteSelection(cursor);
+    const c = this.getCursor() || cursor;
+    const parts = text.split("\n");
+
+    // Быстрый путь: мелкие вставки идут через синхронный insertText()
+    if (parts.length <= chunkSize) {
+      this.insertText(text);
+      return;
+    }
+
+    const currentLine = this.lines[c.begLn];
+    const before = currentLine.val.substring(0, c.begCol);
+    const after = currentLine.val.substring(c.endCol);
+
+    this._inserting = true;
+
+    /** @type {BcePatchOp[]} */
+    const allForward = [];
+    /** @type {BcePatchOp[]} */
+    const allInverse = [];
+    // Позиция вставки следующей порции: сразу за последней вставленной
+    // строкой (перед «хвостом» документа, если курсор был не в конце).
+    // this.lines.length здесь не подходит: он корректен только для вставки
+    // в конец документа.
+    let insertPos = c.begLn + 1;
+    let pos = 0;
+    let chunk = 0;
+    const totalChunks = Math.ceil(parts.length / chunkSize);
+
+    /**
+     * Финализация: курсор в конец вставленного, одна запись истории,
+     * один onChange.
+     * @returns {void}
+     */
+    const finalize = () => {
+      // Курсор в конец вставленного текста (последняя вставленная строка),
+      // а не в конец документа: при вставке в середине ниже остаются
+      // нетронутые строки
+      const finalLn = Math.max(
+        0,
+        Math.min(insertPos - 1, this.lines.length - 1),
+      );
+      const finalCol = this.lines[finalLn].val.length;
+      const finalCursor = {
+        begLn: finalLn,
+        begCol: finalCol,
+        endLn: finalLn,
+        endCol: finalCol,
+      };
+      this.setCursor(finalCursor);
+      this._pushEntry(allForward, finalCursor, allInverse);
+      this._inserting = false;
+      this._fireOnChange();
+    };
+
+    /**
+     * Вставляет одну порцию строк и планирует следующий кадр.
+     * @returns {void}
+     */
+    const step = () => {
+      const count = Math.min(chunkSize, parts.length - pos);
+      const slice = parts.slice(pos, pos + count);
+      const isFirst = chunk === 0;
+      const isLast = chunk === totalChunks - 1;
+
+      /** @type {BcePatchOp[]} */
+      const ops = [];
+      if (isFirst) {
+        // Первая строка порции приклеивается к строке курсора (id сохраняется
+        // - критично для матчинга dataset.lineId в onInput)
+        ops.push({
+          type: "replace",
+          index: c.begLn,
+          lines: [{ id: currentLine.id, val: before + slice[0] }],
+        });
+        if (slice.length > 1) {
+          /** @type {Rec[]} */
+          const inserted = [];
+          for (let i = 1; i < slice.length; i++) {
+            inserted.push({ id: this.newId(), val: slice[i] });
+          }
+          if (isLast) inserted[inserted.length - 1].val += after;
+          ops.push({ type: "insert", index: c.begLn + 1, lines: inserted });
+        } else if (isLast) {
+          // Единственная строка в единственной порции: хвост в ту же строку
+          /** @type {Rec} */ (/** @type {BceReplaceOp} */ (ops[0]).lines).val +=
+            after;
+        }
+      } else {
+        /** @type {Rec[]} */
+        const inserted = slice.map((v) => ({ id: this.newId(), val: v }));
+        if (isLast) inserted[inserted.length - 1].val += after;
+        ops.push({ type: "insert", index: insertPos, lines: inserted });
+      }
+
+      // _invertOps для insert не читает this.lines, для replace читает -
+      // вызов ДО _applyOpsTo корректен
+      const inverse = this._invertOps(ops);
+      this.lines = this._applyOpsTo(this.lines, ops);
+      this._renderPatch(ops);
+
+      allForward.push(...ops);
+      // Инверсии последующих порций должны применяться ПЕРЕД инверсиями
+      // предыдущих (F1,F2 -> I2,I1), поэтому unshift, а не push
+      allInverse.unshift(...inverse);
+
+      const lastOp = ops[ops.length - 1];
+      if (lastOp.type === "insert") {
+        insertPos =
+          lastOp.index +
+          (Array.isArray(lastOp.lines) ? lastOp.lines.length : 1);
+      }
+
+      if (this.onProgress)
+        this.onProgress({ inserted: pos + count, total: parts.length });
+
+      pos += count;
+      chunk++;
+      if (chunk < totalChunks) {
+        requestAnimationFrame(step);
+      } else {
+        finalize();
+      }
+    };
+
+    requestAnimationFrame(step);
+  }
+
   /* ================================================================
   Действия по горячим клавишам
   ================================================================= */
@@ -2017,6 +2206,10 @@ class Bce {
    * @returns {void}
    */
   onKeyDown(e) {
+    if (this._inserting) {
+      e.preventDefault();
+      return;
+    }
     if (!e.shiftKey) this.resetSelectionAnchor();
 
     if (this._handleActionKeys(e)) return;
@@ -2608,7 +2801,6 @@ class Bce {
       const add = " ".repeat(target - col);
       const newVal = cut.substring(0, col) + add + cut.substring(col);
 
-      // Делаем ОДИН коммит для всей операции
       this.commitChange(
         [
           {
@@ -2811,6 +3003,7 @@ class Bce {
   onInput(_e, { deferCursor = false } = {}) {
     const ie = /** @type {InputEvent} */ (_e);
     if (ie?.isComposing || this._composing) return;
+    if (this._inserting) return;
 
     // DOM уже изменён браузером до этого события - индекс текстовых узлов
     // (_nodeMap) мог устареть. До ближайшего render() getCursor() обязан
@@ -2912,9 +3105,7 @@ class Bce {
       e.clipboardData || /** @type {any} */ (window).clipboardData
     ).getData("text");
     if (text) {
-      this.insertText(text.replace(/\r\n?/g, "\n"));
+      this.insertTextChunked(text.replace(/\r\n?/g, "\n"));
     }
   }
 }
-
-//export default Bce;
