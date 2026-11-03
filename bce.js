@@ -213,7 +213,7 @@ class Bce {
     /** @type {HTMLDivElement} */
     this.content = /** @type {any} */ (null);
     /** @type {BceCursor | null} */
-    this._lastCursor = null;
+    this.cursor = null;
     /** @type {number | undefined} */
     this._selDesiredCol = undefined;
     /** @type {boolean} - идёт ли активная IME-композиция (ввод КРЯ/КПЯ, мобильные клавиатуры) */
@@ -357,7 +357,7 @@ class Bce {
     this.history = [];
     this.historyIndex = -1;
     this._activeLine = -1;
-    this._lastCursor = null;
+    this.cursor = null;
     this._onChangeCallback = null;
     this._highlightCache?.clear();
     this._emmetKeys = null;
@@ -403,7 +403,7 @@ class Bce {
     this.render();
     const startCursor = { begLn: 0, begCol: 0, endLn: 0, endCol: 0 };
     this.setCursor(startCursor);
-    this._lastCursor = startCursor;
+    this.cursor = startCursor;
     this._selDesiredCol = undefined;
     if (resetHistory) {
       this._resetHistoryBase();
@@ -441,7 +441,7 @@ class Bce {
     this.render();
     const startCursor = { begLn: 0, begCol: 0, endLn: 0, endCol: 0 };
     this.setCursor(startCursor);
-    this._lastCursor = startCursor;
+    this.cursor = startCursor;
     this._selDesiredCol = undefined;
     if (resetHistory) {
       this._resetHistoryBase();
@@ -1041,13 +1041,13 @@ class Bce {
    */
   getCursor() {
     const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return this._lastCursor;
+    if (!sel || sel.rangeCount === 0) return this.cursor;
 
     if (
       (sel.anchorNode && !this.content.contains(sel.anchorNode)) ||
       (sel.focusNode && !this.content.contains(sel.focusNode))
     ) {
-      return this._lastCursor;
+      return this.cursor;
     }
 
     const range = sel.getRangeAt(0);
@@ -1134,14 +1134,14 @@ class Bce {
 
     const beg = anchorFirst ? anchor : focus;
     const end = anchorFirst ? focus : anchor;
-    this._lastCursor = {
+    this.cursor = {
       begLn: beg.lineIndex,
       begCol: beg.offset,
       endLn: end.lineIndex,
       endCol: end.offset,
       backward: !anchorFirst,
     };
-    return this._lastCursor;
+    return this.cursor;
   }
 
   /**
@@ -1226,6 +1226,8 @@ class Bce {
     begCol = this._clampOffset(begLn, begCol);
     endCol = this._clampOffset(endLn, endCol);
 
+    this.cursor = { begLn, begCol, endLn, endCol, backward: !!cursor.backward };
+
     const beg = setPoint(begLn, begCol);
     const end =
       begLn === endLn && begCol === endCol ? beg : setPoint(endLn, endCol);
@@ -1244,16 +1246,6 @@ class Bce {
           extent.node,
           extent.offset,
         );
-        // Синхронизируем кэш с моделью (клампированные значения):
-        // getCursor() вернёт эти координаты, если выделение уйдёт
-        // за пределы редактора до ближайшего чтения DOM.
-        this._lastCursor = {
-          begLn,
-          begCol,
-          endLn,
-          endCol,
-          backward: !!cursor.backward,
-        };
       }
     } catch (_e) {
       /* ignore */
