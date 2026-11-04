@@ -7,49 +7,44 @@
   "editor.formatOnSave": true, // форматирование по ctrl+s
 
   "files.autoSave": "afterDelay",
-  
+
   "git.enableSmartCommit": true,
   "git.confirmSync": false,
   "git.postCommitCommand": "sync",
-  
+
   "[typescript]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode",
-      "editor.formatOnSave": true
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true
   },
   "[javascript]": {
-      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "svelte.enable-ts-plugin": true,
   "redhat.telemetry.enabled": true,
-  
+
   "explorer.confirmDelete": false,
 
   "workbench.tree.indent": 16,
   "workbench.startupEditor": "none",
   // подсветка отступов
   "workbench.colorCustomizations": {
-      "editorIndentGuide.activeBackground1": "#ffc40040",
-      "editorIndentGuide.activeBackground2": "#da70d650",
-      "editorIndentGuide.activeBackground3": "#189bf850",
-      // non-active indent guide colors
-      "editorIndentGuide.background1": "#ffc40005",
-      "editorIndentGuide.background2": "#da70d605",
-      "editorIndentGuide.background3": "#189bf805"
+    "editorIndentGuide.activeBackground1": "#ffc40040",
+    "editorIndentGuide.activeBackground2": "#da70d650",
+    "editorIndentGuide.activeBackground3": "#189bf850",
+    // non-active indent guide colors
+    "editorIndentGuide.background1": "#ffc40005",
+    "editorIndentGuide.background2": "#da70d605",
+    "editorIndentGuide.background3": "#189bf805"
   },
   "workbench.secondarySideBar.defaultVisibility": "hidden",
   "workbench.colorTheme": "Visual Studio Dark",
   // "workbench.colorTheme": "Dark Modern",
-  
+
   "extensions.ignoreRecommendations": true,
   "editor.accessibilitySupport": "on",
-  
+
   "cSpell.language": "en,ru",
-  "cSpell.userWords": [
-      "typograf",
-      "емеил",
-      "куаркода",
-      "Хычин"
-  ],
+  "cSpell.userWords": ["typograf", "емеил", "куаркода", "Хычин"],
   "cSpell.words": [
     "contenteditable",
     "Dis",
@@ -67,9 +62,41 @@
     "WEBSHOP",
     "webshops",
     "worktime",
+    "батч",
+    "вьюпорт",
+    "гуттер",
+    "гуттера",
+    "гуттере",
+    "дифф",
+    "диффе",
+    "закоммичена",
+    "зумить",
+    "Инвалидация",
+    "Клампинг",
+    "колбэк",
+    "колбэке",
+    "компакции",
+    "компакция",
     "Курьерка",
+    "матчинга",
+    "многострочности",
     "мобилок",
+    "неизменённые",
+    "переиндексация",
+    "перерендер",
+    "подметоды",
     "распарсить",
-    "табов"
-],  
+    "регэкспы",
+    "рендере",
+    "рендерит",
+    "рендерится",
+    "Симв",
+    "скролл",
+    "скроллер",
+    "схлопывает",
+    "табов",
+    "финализации",
+    "Финализация",
+    "юнит"
+  ]
 }
