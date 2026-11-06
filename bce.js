@@ -908,7 +908,9 @@ class Bce {
    */
   _fillLineNode(div, idx) {
     const line = this.lines[idx];
+    const wasActive = div.classList.contains("bce-active");
     div.className = "bce-line";
+    if (wasActive) div.classList.add("bce-active");
     if (!line) return;
     div.dataset.lineId = String(line.id);
     div.dataset.lineIndex = String(idx);
@@ -924,7 +926,9 @@ class Bce {
    */
   _fillGutterNode(gi, idx) {
     const line = this.lines[idx];
+    const wasActive = gi.classList.contains("bce-active");
     gi.className = "bce-gutter-line";
+    if (wasActive) gi.classList.add("bce-active");
     if (!line) return;
     gi.textContent = String(this.options.showRecId ? line.id : idx + 1);
   }
@@ -945,6 +949,16 @@ class Bce {
     // Без DOM (юнит-тесты модели) - рендер пропускается
     if (!this.content || !this.gutter) return;
     let structuralFrom = -1;
+
+    // Активная строка: запоминаем узлы по ссылке (индексы после
+    // insert/delete сместятся) и сбрасываем кэш
+    let prevActiveContent = /** @type {Element | null} */ (null);
+    let prevActiveGutter = /** @type {Element | null} */ (null);
+    if (this._activeLine >= 0) {
+      prevActiveContent = this.content.children[this._activeLine] ?? null;
+      prevActiveGutter = this.gutter.children[this._activeLine] ?? null;
+      this._activeLine = -1;
+    }
 
     for (const op of ops) {
       if (op.type === "replace") {
@@ -991,6 +1005,8 @@ class Bce {
     }
 
     if (structuralFrom >= 0) this._reindexTail(structuralFrom);
+    prevActiveContent?.classList.remove("bce-active");
+    prevActiveGutter?.classList.remove("bce-active");
     this.updateActiveLine();
   }
 
@@ -1038,6 +1054,8 @@ class Bce {
    * @returns {void}
    */
   updateActiveLine() {
+    // Без DOM (юнит-тесты модели) - подсветка пропускается
+    if (!this.content || !this.gutter) return;
     const cursor = this.getCursor();
     let ln = cursor ? this.getFocus(cursor).ln : -1;
     if (ln < 0 || ln >= this.lines.length) ln = -1;
@@ -1627,6 +1645,7 @@ class Bce {
     this.lines = this._applyOpsTo(this.lines, forwardOps);
     this._renderPatch(forwardOps);
     if (cursor) this.setCursor(cursor);
+    this.updateActiveLine();
     this._pushEntry(forwardOps, cursor, inverse);
     this._fireOnChange();
   }
@@ -1643,6 +1662,7 @@ class Bce {
     this._renderPatch(entry.inverse);
     const cursor = entry.cursorBefore;
     if (cursor) this.setCursor(cursor);
+    this.updateActiveLine();
     this._fireOnChange();
   }
 
@@ -1658,6 +1678,7 @@ class Bce {
     this._renderPatch(entry.forward);
     const cursor = entry.cursorAfter;
     if (cursor) this.setCursor(cursor);
+    this.updateActiveLine();
     this._fireOnChange();
   }
 
@@ -1928,6 +1949,7 @@ class Bce {
         endCol: finalCol,
       };
       this.setCursor(finalCursor);
+      this.updateActiveLine();
       this._pushEntry(allForward, finalCursor, allInverse);
       this._inserting = false;
       this._fireOnChange();
