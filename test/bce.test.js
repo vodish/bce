@@ -291,6 +291,63 @@ test("redo: не выходит за последнее состояние", () 
   assert.deepEqual(vals(ed), ["ab"]);
 });
 
+/* ================================ onCut ============================== */
+
+function fakeCutEvent() {
+  const ev = {
+    prevented: false,
+    text: null,
+    clipboardData: {
+      setData(fmt, text) {
+        if (fmt === "text/plain") ev.text = text;
+      },
+    },
+    preventDefault() {
+      ev.prevented = true;
+    },
+  };
+  return ev;
+}
+
+test("onCut: выделение до начала следующей строки - в буфере остаётся \\n", () => {
+  const ed = makeEditor(["aaa", "bbb", "ccc"]);
+  // Выделение «aa\n» (до начала строки 2): браузер отдаёт конец (1, 0)
+  ed._cursor = cursor(0, 1, 1, 0);
+  const ev = fakeCutEvent();
+  ed.onCut(ev);
+  assert.equal(ev.prevented, true);
+  assert.equal(ev.text, "aa\n"); // перевод строки захвачен выделением - сохраняется
+  assert.deepEqual(vals(ed), ["abbb", "ccc"]);
+});
+
+test("onCut: выделение полных строк (1,0)-(2,0) - строка уходит целиком", () => {
+  const ed = makeEditor(["раз", "два", "три"]);
+  ed._cursor = cursor(1, 0, 2, 0);
+  const ev = fakeCutEvent();
+  ed.onCut(ev);
+  assert.equal(ev.text, "два\n"); // пустая строка в буфере сохраняется
+  assert.deepEqual(vals(ed), ["раз", "три"]);
+});
+
+test("onCut: многострочное выделение - без перевода строки в конце буфера", () => {
+  const ed = makeEditor(["aaa", "bbb", "ccc"]);
+  ed._cursor = cursor(0, 1, 2, 3);
+  const ev = fakeCutEvent();
+  ed.onCut(ev);
+  assert.equal(ev.text, "aa\nbbb\nccc");
+  assert.deepEqual(vals(ed), ["a"]);
+});
+
+test("onCut: пустое выделение - ничего не делает", () => {
+  const ed = makeEditor(["aaa"]);
+  ed._cursor = cursor(0, 1);
+  const ev = fakeCutEvent();
+  ed.onCut(ev);
+  assert.equal(ev.prevented, false);
+  assert.equal(ev.text, null);
+  assert.deepEqual(vals(ed), ["aaa"]);
+});
+
 /* =========================== _tryMoveShortcut ======================== */
 
 test("_tryMoveShortcut: ',>' в середине - перемещает строку вниз", () => {

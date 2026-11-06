@@ -674,6 +674,7 @@ class Bce {
     this.content.addEventListener("keydown", (e) => this.onKeyDown(e), signal);
     this.content.addEventListener("input", (e) => this.onInput(e), signal);
     this.content.addEventListener("paste", (e) => this.onPaste(e), signal);
+    this.content.addEventListener("cut", (e) => this.onCut(e), signal);
 
     // Drag & drop: браузер по умолчанию вставляет HTML и ломает модель
     // (onInput читает textContent). Перехватываем drop и вставляем
@@ -3105,6 +3106,57 @@ class Bce {
     if (text) {
       this.insertTextChunked(text.replace(/\r\n?/g, "\n"));
     }
+  }
+
+  /**
+   * Обрабатывает Ctrl+X (событие `cut`).
+   *
+   * Cut выполняется вручную, по координатам модели: и текст буфера, и
+   * удаление строятся из ОДНОГО курсора (getCursor()), поэтому браузерные
+   * причуды преобразования DOM-диапазона в текст (лишний перевод строки на
+   * границе строк) не влияют ни на буфер, ни на документ.
+   *
+   * Текст в буфер кладётся «как есть»: если выделение заканчивается в начале
+   * следующей строки (endCol === 0, т.е. захватывает перевод строки), в буфере
+   * остаётся хвостовая пустая строка - как у нативного cut. Удаление из модели
+   * выполняет deleteSelection().
+   * @param {ClipboardEvent} e
+   * @returns {void}
+   */
+  onCut(e) {
+    if (this._inserting) {
+      e.preventDefault();
+      return;
+    }
+    const cursor = this.getCursor();
+    if (!cursor) return;
+    if (cursor.begLn === cursor.endLn && cursor.begCol === cursor.endCol)
+      return; // пустое выделение - нативно вырезать нечего
+
+    let text;
+    if (cursor.begLn === cursor.endLn) {
+      text = this.lines[cursor.begLn].val.substring(
+        cursor.begCol,
+        cursor.endCol,
+      );
+    } else {
+      text = this.lines[cursor.begLn].val.substring(cursor.begCol);
+      for (let i = cursor.begLn + 1; i <= cursor.endLn; i++) {
+        const tail =
+          i === cursor.endLn
+            ? this.lines[i].val.substring(0, cursor.endCol)
+            : this.lines[i].val;
+        text += "\n" + tail;
+      }
+    }
+
+    e.preventDefault();
+    if (e.clipboardData) {
+      e.clipboardData.setData("text/plain", text);
+    } else {
+      this._fallbackCopy(text);
+    }
+    this.deleteSelection(cursor);
   }
 }
 
