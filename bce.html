@@ -214,18 +214,20 @@
     });
     
     editor.setLines([
-  {
-    "id": 555,
-    "val": "пять"
-  },
-  {
-    "id": 2222,
-    "val": "два"
-  },
-  {
-    "id": 6,
-    "val": "    шесть"
-  }])
+        {
+            "id": 555,
+            "val": "пять"
+        },
+        {
+            "id": 2222,
+            "val": "два"
+        },
+        {
+            "id": 6,
+            "val": "    шесть"
+        }
+    ])
+    editor.setCursor({ begLn: 0, begCol: 0, endLn: 0, endCol: 0 });
 
     function updateCursorMonitor() {
         const cursor = editor.getCursor();

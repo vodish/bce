@@ -1057,7 +1057,20 @@ class Bce {
     // Без DOM (юнит-тесты модели) - подсветка пропускается
     if (!this.content || !this.gutter) return;
     const cursor = this.getCursor();
-    let ln = cursor ? this.getFocus(cursor).ln : -1;
+    const ln = cursor ? this.getFocus(cursor).ln : -1;
+    this._setActiveLine(ln);
+  }
+
+  /**
+   * Переносит класс `bce-active` на строку `ln` (гуттер + контент).
+   * Используется и после пользовательских выделений (getCursor),
+   * и после программного setCursor() - подсветка следует за курсором.
+   * @param {number} ln - индекс строки; невалидный индекс снимает подсветку
+   * @returns {void}
+   * @private
+   */
+  _setActiveLine(ln) {
+    if (!this.content || !this.gutter) return;
     if (ln < 0 || ln >= this.lines.length) ln = -1;
     if (ln === this._activeLine) return;
 
@@ -1379,6 +1392,13 @@ class Bce {
     } catch (_e) {
       /* ignore */
     }
+
+    // Подсветка активной строки должна следовать и за программно
+    // установленным курсором, а не только за выделением через мышь/клавиши.
+    // Считаем позицию из модели (this.cursor), а не из DOM: если DOM-выделение
+    // не применилось (редактор вне фокуса/скрыт), getCursor() вернул бы
+    // устаревшую позицию.
+    this._setActiveLine(this.getFocus(this.cursor).ln);
   }
 
   /* ================================================================
