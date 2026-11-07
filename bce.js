@@ -674,6 +674,7 @@ class Bce {
     this.content.addEventListener("keydown", (e) => this.onKeyDown(e), signal);
     this.content.addEventListener("input", (e) => this.onInput(e), signal);
     this.content.addEventListener("paste", (e) => this.onPaste(e), signal);
+    this.content.addEventListener("copy", (e) => this.onCopy(e), signal);
     this.content.addEventListener("cut", (e) => this.onCut(e), signal);
 
     // Drag & drop: браузер по умолчанию вставляет HTML и ломает модель
@@ -1843,14 +1844,21 @@ class Bce {
 
   /**
    * Вставляет текст в текущую позицию курсора (с поддержкой многострочности).
+   *
+   * Вставка происходит относительно ТОЧКИ КУРСОРА (фокуса выделения):
+   * при выделении сверху вниз - в конец выделения, снизу вверх - в начало.
+   * Само выделение не удаляется - после вставки оно сбрасывается:
+   * курсор устанавливается в конец вставленного текста.
    * @param {string} text
    * @returns {void}
    */
   insertText(text) {
     const cursor = this.getCursor();
     if (!cursor) return;
-    this.deleteSelection(cursor);
-    const c = this.getCursor() || cursor;
+    const f = this.getFocus(cursor);
+    const ln = Math.max(0, Math.min(f.ln, this.lines.length - 1));
+    const col = this._clampOffset(ln, f.col);
+    const c = { begLn: ln, begCol: col, endLn: ln, endCol: col };
     const parts = text.split("\n");
     const currentLine = this.lines[c.begLn];
     const before = currentLine.val.substring(0, c.begCol);
@@ -1919,8 +1927,12 @@ class Bce {
   insertTextChunked(text, { chunkSize = 5000 } = {}) {
     const cursor = this.getCursor();
     if (!cursor) return;
-    this.deleteSelection(cursor);
-    const c = this.getCursor() || cursor;
+    // Вставка относительно точки курсора (фокуса выделения), выделение
+    // не удаляется - семантика единая с insertText()
+    const f = this.getFocus(cursor);
+    const ln = Math.max(0, Math.min(f.ln, this.lines.length - 1));
+    const col = this._clampOffset(ln, f.col);
+    const c = { begLn: ln, begCol: col, endLn: ln, endCol: col };
     const parts = text.split("\n");
 
     // Быстрый путь: мелкие вставки идут через синхронный insertText()
@@ -2072,13 +2084,33 @@ class Bce {
   }
 
   /**
+   * Возвращает текст выделения в «нативном» виде: если выделение
+   * заканчивается в НАЧАЛЕ следующей строки (endCol === 0), к тексту
+   * добавляется хвостовой перевод строки - как при нативном копировании
+   * браузера. Благодаря `\n` вставка после копирования целых строк
+   * воспроизводит их построчную структуру.
+   * @param {BceCursor} cursor
+   * @returns {string}
+   * @private
+   */
+  _nativeSelectionText(cursor) {
+    let text = this.getSelectedText(cursor);
+    if (cursor.endLn > cursor.begLn && cursor.endCol === 0) text += "\n";
+    return text;
+  }
+
+  /**
    * Копирует выделенный текст в буфер обмена.
+   *
+   * Выделение НЕ сбрасывается: курсор остаётся там, где остановился,
+   * а само выделение уйдёт только после последующей вставки - она
+   * выполняется относительно точки курсора (см. insertText()).
    * @returns {void}
    */
   actionCopy() {
     const cursor = this.getCursor();
     if (!cursor) return;
-    const text = this.getSelectedText(cursor);
+    const text = this._nativeSelectionText(cursor);
     if (!text) return;
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(text).catch(() => this._fallbackCopy(text));
@@ -3147,6 +3179,37 @@ class Bce {
     ).getData("text");
     if (text) {
       this.insertTextChunked(text.replace(/\r\n?/g, "\n"));
+    }
+  }
+
+  /**
+   * Обрабатывает нативное копирование (контекстное меню и т.п.).
+   *
+   * Текст в буфер кладётся «как есть» из модели: если выделение
+   * заканчивается в начале следующей строки (endCol === 0), в буфере
+   * остаётся хвостовой перевод строки - как у нативного copy. Это
+   * устраняет браузерные причуды преобразования DOM-выделения в текст.
+   *
+   * Выделение НЕ сбрасывается: курсор остаётся там, где остановился,
+   * а само выделение уйдёт только после последующей вставки.
+   * @param {ClipboardEvent} e
+   * @returns {void}
+   */
+  onCopy(e) {
+    if (this._inserting) {
+      e.preventDefault();
+      return;
+    }
+    const cursor = this.getCursor();
+    if (!cursor) return;
+    if (cursor.begLn === cursor.endLn && cursor.begCol === cursor.endCol)
+      return; // пустое выделение - копировать нечего
+    const text = this._nativeSelectionText(cursor);
+    e.preventDefault();
+    if (e.clipboardData) {
+      e.clipboardData.setData("text/plain", text);
+    } else {
+      this._fallbackCopy(text);
     }
   }
 
