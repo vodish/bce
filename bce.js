@@ -838,7 +838,6 @@ class Bce {
       const div = document.createElement("div");
       div.className = "bce-line";
       div.dataset.lineId = String(line.id);
-      div.dataset.lineIndex = String(idx);
       div.innerHTML = line.val === "" ? "<br>" : this.highlight(line.val);
       this.content.appendChild(div);
       this._indexLineNodes(div, idx);
@@ -878,7 +877,7 @@ class Bce {
 
   /**
    * Перерисовывает одну строку без полного render() (инкрементальный рендер).
-   * Обновляет HTML, dataset (lineId/lineIndex), гуттер и переиндексирует
+   * Обновляет HTML, dataset (lineId), гуттер и переиндексирует
    * текстовые узлы строки в _nodeMap.
    * @param {number} idx - индекс строки в модели
    * @returns {void}
@@ -899,7 +898,7 @@ class Bce {
 
   /**
    * Заполняет узел строки `.bce-line` данными строки модели: класс, dataset
-   * (lineId/lineIndex), подсвеченный HTML. Общая логика для renderLine() и
+   * (lineId), подсвеченный HTML. Общая логика для renderLine() и
    * батч-вставки в _renderPatch() - узел наполняется ДО вставки в документ,
    * чтобы вся порция попадала в DOM одним insertBefore (один reflow).
    * @param {HTMLElement} div - элемент строки (в документе или во фрагменте)
@@ -914,7 +913,6 @@ class Bce {
     if (wasActive) div.classList.add("bce-active");
     if (!line) return;
     div.dataset.lineId = String(line.id);
-    div.dataset.lineIndex = String(idx);
     div.innerHTML = line.val === "" ? "<br>" : this.highlight(line.val);
   }
 
@@ -1012,7 +1010,7 @@ class Bce {
   }
 
   /**
-   * Обновляет `dataset.lineIndex`, номера в гуттере и (для небольшого хвоста)
+   * Обновляет номера в гуттере и (для небольшого хвоста)
    * индекс текстовых узлов после структурного изменения (insert/delete строк).
    * Для большого хвоста переиндексация дорога - помечаем _nodeMap устаревшим:
    * getCursor() пойдёт резервным путём через TreeWalker (корректно, но
@@ -1025,10 +1023,6 @@ class Bce {
     const total = this.lines.length;
     this._activeLine = -1;
     for (let i = from; i < total; i++) {
-      const div = /** @type {HTMLElement | undefined} */ (
-        this.content.children[i]
-      );
-      if (div) div.dataset.lineIndex = String(i);
       const g = /** @type {HTMLElement | undefined} */ (
         this.gutter.children[i]
       );
@@ -1249,12 +1243,20 @@ class Bce {
           return { lineIndex: 0, offset: 0 };
         }
         return {
-          lineIndex: parseInt(lineEl.dataset.lineIndex ?? "0", 10),
+          lineIndex: Array.prototype.indexOf.call(
+            this.content.children,
+            lineEl,
+          ),
           offset: (lineEl.textContent ?? "").length,
         };
       }
 
-      const lineIndex = parseInt(lineEl.dataset.lineIndex ?? "0", 10);
+      // Индекс строки = позиция .bce-line среди детей content (порядок DOM
+      // всегда совпадает с порядком строк модели).
+      const lineIndex = Array.prototype.indexOf.call(
+        this.content.children,
+        lineEl,
+      );
       let charOffset = 0;
       const walker = document.createTreeWalker(
         lineEl,
