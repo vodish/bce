@@ -820,3 +820,110 @@ test("setLines: без resetHistory - undo возвращает прежний �
     [42, 43],
   );
 });
+
+/* ======================= «Умный» Home ======================= */
+
+/** Фейковое событие клавиатуры для обработчиков навигации */
+const keyEvent = (key, opts = {}) => ({
+  key,
+  shiftKey: Boolean(opts.shiftKey),
+  altKey: Boolean(opts.altKey),
+  ctrlKey: Boolean(opts.ctrlKey),
+  metaKey: Boolean(opts.metaKey),
+  preventDefault() {
+    this.defaultPrevented = true;
+  },
+});
+
+test("_firstNonWsCol: ведущие пробелы, табы, пустая строка, одни пробелы", () => {
+  const ed = makeEditor(["    раз два", "\tabc", "", "   ", "x"]);
+  assert.equal(ed._firstNonWsCol(0), 4);
+  assert.equal(ed._firstNonWsCol(1), 1);
+  assert.equal(ed._firstNonWsCol(2), 0);
+  assert.equal(ed._firstNonWsCol(3), 3); // одни пробелы → конец строки
+  assert.equal(ed._firstNonWsCol(4), 0);
+});
+
+test("_handleHome: из середины строки - на первый непробельный символ", () => {
+  const ed = makeEditor(["    раз два"], { line: cursor(0, 9) });
+  const e = keyEvent("Home");
+  ed._handleHome(e);
+  assert.equal(e.defaultPrevented, true);
+  assert.deepEqual(ed.getCursor(), { ...cursor(0, 4), backward: false });
+});
+
+test("_handleHome: повторное нажатие с первой непробельной - в колонку 0", () => {
+  const ed = makeEditor(["    раз два"], { line: cursor(0, 4) });
+  const e = keyEvent("Home");
+  ed._handleHome(e);
+  assert.deepEqual(ed.getCursor(), { ...cursor(0, 0), backward: false });
+});
+
+test("_handleHome: из колонки 0 - обратно на первый непробельный символ", () => {
+  const ed = makeEditor(["    раз два"], { line: cursor(0, 0) });
+  const e = keyEvent("Home");
+  ed._handleHome(e);
+  assert.deepEqual(ed.getCursor(), { ...cursor(0, 4), backward: false });
+});
+
+test("_handleHome: строка без отступа - всегда колонка 0", () => {
+  const ed = makeEditor(["раз два"], { line: cursor(0, 3) });
+  const e = keyEvent("Home");
+  ed._handleHome(e);
+  assert.deepEqual(ed.getCursor(), { ...cursor(0, 0), backward: false });
+  const e2 = keyEvent("Home");
+  ed._handleHome(e2);
+  assert.deepEqual(ed.getCursor(), { ...cursor(0, 0), backward: false });
+});
+
+test("_handleHome: выделение схлопывается в точке фокуса", () => {
+  const ed = makeEditor(["    раз два"], { line: cursor(0, 0, 0, 9) });
+  const e = keyEvent("Home");
+  ed._handleHome(e);
+  assert.deepEqual(ed.getCursor(), { ...cursor(0, 4), backward: false });
+});
+
+test("_handleShiftArrows: Shift+Home - тот же «умный» тоггл", () => {
+  const ed = makeEditor(["    раз два"], { line: cursor(0, 9) });
+  // Локальный стаб, повторяющий нормализацию настоящего setCursor
+  // (сортировка beg/end + сохранение backward).
+  ed.setCursor = function (c) {
+    let { begLn, begCol, endLn, endCol } = c;
+    if (begLn > endLn || (begLn === endLn && begCol > endCol)) {
+      [begLn, endLn] = [endLn, begLn];
+      [begCol, endCol] = [endCol, begCol];
+    }
+    this._cursor = { begLn, begCol, endLn, endCol, backward: !!c.backward };
+  };
+  const e = keyEvent("Home", { shiftKey: true });
+  ed._handleShiftArrows(e);
+  // якорь остаётся в (0,9), фокус - на первом непробельном (0,4)
+  assert.deepEqual(ed.getCursor(), {
+    begLn: 0,
+    begCol: 4,
+    endLn: 0,
+    endCol: 9,
+    backward: true,
+  });
+  const e2 = keyEvent("Home", { shiftKey: true });
+  ed._handleShiftArrows(e2);
+  // фокус уже на «умной» позиции - расширяется до колонки 0
+  assert.deepEqual(ed.getCursor(), {
+    begLn: 0,
+    begCol: 0,
+    endLn: 0,
+    endCol: 9,
+    backward: true,
+  });
+});
+
+test("_handleNavigation: обычный Home перехватывается («умный» тоггл)", () => {
+  const ed = makeEditor(["    раз два"], { line: cursor(0, 9) });
+  const e = keyEvent("Home");
+  const handled = ed._handleNavigation(e);
+  assert.equal(handled, true);
+  assert.deepEqual(ed.getCursor(), { ...cursor(0, 4), backward: false });
+  const e2 = keyEvent("Home");
+  ed._handleNavigation(e2);
+  assert.deepEqual(ed.getCursor(), { ...cursor(0, 0), backward: false });
+});

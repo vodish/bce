@@ -1098,6 +1098,20 @@ class Bce {
   }
 
   /**
+   * Колонка первого непробельного символа строки - цель «умного» Home.
+   * Для строки из одних пробельных символов возвращает длину строки.
+   * @param {number} lineIdx - индекс строки
+   * @returns {number}
+   * @private
+   */
+  _firstNonWsCol(lineIdx) {
+    const line = this.lines[lineIdx];
+    if (!line) return 0;
+    const m = /\S/.exec(line.val);
+    return m ? m.index : line.val.length;
+  }
+
+  /**
    * Возвращает позицию курсора (фокус выделения) - точку, куда «движется» выделение.
    * @param {BceCursor} cursor
    * @returns {{ ln: number, col: number }}
@@ -2438,7 +2452,44 @@ class Bce {
       return true;
     }
 
+    // Без Shift: «умный» Home (первое нажатие - первый непробельный
+    // символ строки, второе - колонка 0).
+    if (
+      !e.shiftKey &&
+      !e.altKey &&
+      !(e.ctrlKey || e.metaKey) &&
+      e.key === "Home"
+    ) {
+      this._handleHome(e);
+      return true;
+    }
+
     return false;
+  }
+
+  /**
+   * «Умный» Home: первое нажатие ставит курсор на первый непробельный
+   * символ строки, второе - в колонку 0 (поведение VS Code).
+   * При активном выделении выделение схлопывается в точке фокуса.
+   * @param {KeyboardEvent} e
+   * @returns {void}
+   * @private
+   */
+  _handleHome(e) {
+    const cursor = this.getCursor();
+    if (!cursor) return;
+    const focus = this.getFocus(cursor);
+    const smartCol = this._firstNonWsCol(focus.ln);
+    const targetCol = focus.col === smartCol && focus.col !== 0 ? 0 : smartCol;
+    e.preventDefault();
+    this.setCursor({
+      begLn: focus.ln,
+      begCol: targetCol,
+      endLn: focus.ln,
+      endCol: targetCol,
+      backward: false,
+    });
+    this.updateActiveLine();
   }
 
   /**
@@ -2811,7 +2862,11 @@ class Bce {
     }
 
     if (e.key === "Home") {
-      setCursorAndReturn(moving.ln, 0);
+      // «Умный» Home: первое нажатие - первый непробельный символ,
+      // второе (если курсор уже на нём) - колонка 0.
+      const smartCol = this._firstNonWsCol(moving.ln);
+      const targetCol = moving.col === smartCol && moving.col !== 0 ? 0 : smartCol;
+      setCursorAndReturn(moving.ln, targetCol);
       this._selDesiredCol = undefined;
       return;
     }
