@@ -927,3 +927,62 @@ test("_handleNavigation: обычный Home перехватывается («�
   ed._handleNavigation(e2);
   assert.deepEqual(ed.getCursor(), { ...cursor(0, 0), backward: false });
 });
+
+/* ============================== actionMove ============================== */
+
+test("actionMove: многострочное выделение перемещается блоком вниз", () => {
+  const ed = makeEditor(["раз", "два", "    три"], {
+    line: cursor(0, 0, 1, 1),
+  });
+  ed.actionMove(1);
+  assert.deepEqual(vals(ed), ["    три", "раз", "два"]);
+  // Выделение сохраняется, обе границы сдвинулись на одну строку
+  assert.deepEqual(ed.getCursor(), cursor(1, 0, 2, 1));
+});
+
+test("actionMove: многострочное выделение перемещается блоком вверх", () => {
+  const ed = makeEditor(["раз", "два", "    три"], {
+    line: cursor(1, 0, 2, 2),
+  });
+  ed.actionMove(-1);
+  assert.deepEqual(vals(ed), ["два", "    три", "раз"]);
+  assert.deepEqual(ed.getCursor(), cursor(0, 0, 1, 2));
+});
+
+test("actionMove: выделение снизу вверх перемещается блоком", () => {
+  const ed = makeEditor(["раз", "два", "    три"], {
+    line: cursor(1, 2, 0, 0),
+  });
+  ed.actionMove(1);
+  assert.deepEqual(vals(ed), ["    три", "раз", "два"]);
+  assert.deepEqual(ed.getCursor(), cursor(2, 2, 1, 0));
+});
+
+test("actionMove: блок на границе документа - без изменений", () => {
+  const edDown = makeEditor(["раз", "два"], { line: cursor(0, 0, 1, 1) });
+  edDown.actionMove(1);
+  assert.deepEqual(vals(edDown), ["раз", "два"]);
+
+  const edUp = makeEditor(["раз", "два"], { line: cursor(0, 0, 1, 1) });
+  edUp.actionMove(-1);
+  assert.deepEqual(vals(edUp), ["раз", "два"]);
+});
+
+test("actionMove: одна строка - прежнее поведение (обмен, курсор следует)", () => {
+  const ed = makeEditor(["раз", "два", "    три"], { line: cursor(0, 2) });
+  ed.actionMove(1);
+  assert.deepEqual(vals(ed), ["два", "раз", "    три"]);
+  assert.deepEqual(ed.getCursor(), cursor(1, 2));
+});
+
+test("actionMove: id строк сохраняются при перемещении блока", () => {
+  const ed = makeEditor(["раз", "два", "    три"], {
+    line: cursor(0, 0, 1, 1),
+  });
+  const ids = ed.lines.map((l) => l.id);
+  ed.actionMove(1);
+  assert.deepEqual(
+    ed.lines.map((l) => l.id),
+    [ids[2], ids[0], ids[1]],
+  );
+});

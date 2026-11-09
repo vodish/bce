@@ -2215,34 +2215,40 @@ class Bce {
   }
 
   /**
-   * Перемещает текущую строку вверх или вниз.
-   * Перестановка выражается двумя replace - унифицировано с патч-моделью.
+   * Перемещает строки вверх или вниз.
+   * При многострочном выделении перемещается весь выделенный блок
+   * как единое целое (обмен с соседней строкой), выделение сохраняется.
+   * Перестановка выражается одним replace - унифицировано с патч-моделью.
    * @param {number} dir - `1` (вниз) или `-1` (вверх)
    * @returns {void}
    */
   actionMove(dir) {
     const cursor = this.getCursor();
     if (!cursor) return;
-    const idx = cursor.begLn;
-    const target = idx + dir;
-    if (target < 0 || target >= this.lines.length) return;
+    const first = Math.min(cursor.begLn, cursor.endLn);
+    const last = Math.max(cursor.begLn, cursor.endLn);
+    const neighbor = dir > 0 ? last + 1 : first - 1;
+    if (neighbor < 0 || neighbor >= this.lines.length) return;
+    // Диапазон затрагиваемых строк [from..to] - блок + соседняя строка
+    const from = Math.min(first, neighbor);
+    const to = Math.max(last, neighbor);
+    // Соседняя строка перемещается на противоположный край блока
+    const reordered =
+      dir > 0
+        ? [this.lines[to], ...this.lines.slice(from, to)]
+        : [...this.lines.slice(from + 1, to + 1), this.lines[from]];
     this.commitChange(
       [
         {
           type: "replace",
-          index: idx,
-          lines: [{ id: this.lines[target].id, val: this.lines[target].val }],
-        },
-        {
-          type: "replace",
-          index: target,
-          lines: [{ id: this.lines[idx].id, val: this.lines[idx].val }],
+          index: from,
+          lines: reordered.map((l) => ({ id: l.id, val: l.val })),
         },
       ],
       {
-        begLn: target,
+        begLn: cursor.begLn + dir,
         begCol: cursor.begCol,
-        endLn: target,
+        endLn: cursor.endLn + dir,
         endCol: cursor.endCol,
       },
     );
