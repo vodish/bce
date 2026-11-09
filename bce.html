@@ -164,7 +164,6 @@
     <div>
         <b>Emmet:</b> введите <code>a</code>, <code>code</code> и нажмите <b>Tab</b> (ПК) или <b>,</b> (мобильный).
     </div>
-    <button onclick="firstVisibleLine(this)">Первая видимая строка ()</button>
 </div>
 
 <div id="editor"></div>
@@ -265,11 +264,6 @@
         document.getElementById('output').textContent = JSON.stringify(editor.lines, null, 2);
         // Прокрутка к результату на мобильных
         document.getElementById('output').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-
-    function firstVisibleLine(el) {
-        const idx = editor.getFirstVisibleLineExact(true);
-        el.textContent = `Первая видимая строка (${idx})`;
     }
 
     function toggleLineNumbers(show) {
