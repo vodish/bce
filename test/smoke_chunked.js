@@ -152,20 +152,15 @@ function makeEditor(initial, cursor) {
   );
   const text = Array.from({ length: 6001 }, (_, i) => `n${i + 1}`).join("\n");
   ed.insertTextChunked(text, { chunkSize: 5000 });
-  // deleteSelection сворачивает документ в одну пустую строку,
-  // затем вставка 6001 строк: 1 + 6000 = 6001
+  // выделение (весь документ) удалено, вставлено 6001 строк
   assert.equal(ed.lines.length, 6001);
   assert.equal(ed.lines[0].val, "n1");
   assert.equal(ed.lines[6000].val, "n6001");
-  // Первый undo отменяет только вставку (остаётся пустая строка после удаления)
+  // удаление + вставка - ОДНА запись истории: один undo отменяет всё
+  assert.equal(ed.history.length, 1);
   ed.undo();
-  assert.equal(ed.lines.length, 1);
-  assert.equal(ed.lines[0].val, "");
-  // Второй undo отменяет удаление выделения
-  ed.undo();
-  assert.equal(ed.lines.length, 3);
-  assert.equal(ed.lines[2].val, "three");
-  console.log("Тест 4 (замена выделения, undo по шагам): OK");
+  assert.deepEqual(ed.lines.map((l) => l.val), ["one", "two", "three"]);
+  console.log("Тест 4 (замена выделения, единый undo): OK");
 }
 
 // --- Тест 5: onProgress вызывается на каждой порции ---

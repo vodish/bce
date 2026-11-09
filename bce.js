@@ -1845,45 +1845,63 @@ class Bce {
   /**
    * Вставляет текст в текущую позицию курсора (с поддержкой многострочности).
    *
-   * Вставка происходит относительно ТОЧКИ КУРСОРА (фокуса выделения):
-   * при выделении сверху вниз - в конец выделения, снизу вверх - в начало.
-   * Само выделение не удаляется - после вставки оно сбрасывается:
-   * курсор устанавливается в конец вставленного текста.
+   * При активном выделении выделенный текст УДАЛЯЕТСЯ перед вставкой
+   * (замена выделения): вставка выполняется в начало выделения, всё
+   * выделенное уходит. Удаление и вставка попадают в историю ОДНОЙ
+   * записью - один Ctrl+Z отменяет их целиком.
+   * Курсор устанавливается в конец вставленного текста.
    * @param {string} text
    * @returns {void}
    */
   insertText(text) {
     const cursor = this.getCursor();
     if (!cursor) return;
-    const f = this.getFocus(cursor);
-    const ln = Math.max(0, Math.min(f.ln, this.lines.length - 1));
-    const col = this._clampOffset(ln, f.col);
-    const c = { begLn: ln, begCol: col, endLn: ln, endCol: col };
+    const hasSel =
+      cursor.begLn !== cursor.endLn || cursor.begCol !== cursor.endCol;
     const parts = text.split("\n");
-    const currentLine = this.lines[c.begLn];
-    const before = currentLine.val.substring(0, c.begCol);
-    const after = currentLine.val.substring(c.endCol);
+    // Вставка в НАЧАЛО выделения (cursor.beg нормализован - это начало
+    // диапазона независимо от направления выделения)
+    const ln = Math.max(0, Math.min(cursor.begLn, this.lines.length - 1));
+    const col = this._clampOffset(ln, cursor.begCol);
+    const currentLine = this.lines[ln];
+    const before = currentLine.val.substring(0, col);
+    // Хвост после вставки: при выделении - остаток последней выделенной строки
+    const endCol = hasSel ? cursor.endCol : col;
+    const after =
+      cursor.endLn === ln
+        ? currentLine.val.substring(endCol)
+        : this.lines[cursor.endLn].val.substring(endCol);
 
     /** @type {BcePatchOp[]} */
     const ops = [];
 
+    // Удаление выделения: промежуточные строки (хвост последней строки
+    // уже учтён в `after`, первая строка будет заменена ниже)
+    if (hasSel && cursor.endLn !== ln) {
+      ops.push({
+        type: "delete",
+        index: ln + 1,
+        count: cursor.endLn - ln,
+      });
+    }
+
     if (parts.length === 1) {
       ops.push({
         type: "replace",
-        index: c.begLn,
+        index: ln,
         lines: [{ id: currentLine.id, val: before + parts[0] + after }],
       });
-      const col = before.length + parts[0].length;
+      const ncol = before.length + parts[0].length;
       this.commitChange(ops, {
-        begLn: c.begLn,
-        begCol: col,
-        endLn: c.begLn,
-        endCol: col,
+        begLn: ln,
+        begCol: ncol,
+        endLn: ln,
+        endCol: ncol,
       });
     } else {
       ops.push({
         type: "replace",
-        index: c.begLn,
+        index: ln,
         lines: [{ id: currentLine.id, val: before + parts[0] }],
       });
       /** @type {Rec[]} */
@@ -1895,8 +1913,8 @@ class Bce {
         id: this.newId(),
         val: parts[parts.length - 1] + after,
       });
-      ops.push({ type: "insert", index: c.begLn + 1, lines: inserted });
-      const finalLine = c.begLn + parts.length - 1;
+      ops.push({ type: "insert", index: ln + 1, lines: inserted });
+      const finalLine = ln + parts.length - 1;
       const finalOffset = parts[parts.length - 1].length;
       this.commitChange(ops, {
         begLn: finalLine,
@@ -1916,6 +1934,10 @@ class Bce {
    * - onChange вызывается один раз в конце;
    * - каждая порция рендерится через _renderPatch() (батч-вставка фрагментом).
    *
+   * Семантика выделения единая с insertText(): при активном выделении
+   * выделенный текст УДАЛЯЕТСЯ перед вставкой (замена выделения) -
+   * в той же записи истории.
+   *
    * Во время вставки установлен флаг `_inserting`: onKeyDown/onInput
    * игнорируются, чтобы правки пользователя не попали в недоконченный документ.
    *
@@ -1927,11 +1949,12 @@ class Bce {
   insertTextChunked(text, { chunkSize = 5000 } = {}) {
     const cursor = this.getCursor();
     if (!cursor) return;
-    // Вставка относительно точки курсора (фокуса выделения), выделение
-    // не удаляется - семантика единая с insertText()
-    const f = this.getFocus(cursor);
-    const ln = Math.max(0, Math.min(f.ln, this.lines.length - 1));
-    const col = this._clampOffset(ln, f.col);
+    const hasSel =
+      cursor.begLn !== cursor.endLn || cursor.begCol !== cursor.endCol;
+    // Вставка в НАЧАЛО выделения (cursor.beg нормализован) - семантика
+    // единая с insertText(): выделение удаляется перед вставкой
+    const ln = Math.max(0, Math.min(cursor.begLn, this.lines.length - 1));
+    const col = this._clampOffset(ln, cursor.begCol);
     const c = { begLn: ln, begCol: col, endLn: ln, endCol: col };
     const parts = text.split("\n");
 
@@ -1943,7 +1966,12 @@ class Bce {
 
     const currentLine = this.lines[c.begLn];
     const before = currentLine.val.substring(0, c.begCol);
-    const after = currentLine.val.substring(c.endCol);
+    // Хвост после вставки: при выделении - остаток последней выделенной строки
+    const endCol = hasSel ? cursor.endCol : c.begCol;
+    const after =
+      cursor.endLn === c.begLn
+        ? currentLine.val.substring(endCol)
+        : this.lines[cursor.endLn].val.substring(endCol);
 
     this._inserting = true;
 
@@ -2000,6 +2028,16 @@ class Bce {
       /** @type {BcePatchOp[]} */
       const ops = [];
       if (isFirst) {
+        // Замена выделения: промежуточные строки удаляются первой же порцией
+        // (хвост последней строки уже учтён в `after`, первая строка будет
+        // заменена ниже). Вся операция - одна запись истории.
+        if (hasSel && cursor.endLn !== c.begLn) {
+          ops.push({
+            type: "delete",
+            index: c.begLn + 1,
+            count: cursor.endLn - c.begLn,
+          });
+        }
         // Первая строка порции приклеивается к строке курсора (id сохраняется
         // - критично для матчинга dataset.lineId в onInput)
         ops.push({
@@ -2103,8 +2141,8 @@ class Bce {
    * Копирует выделенный текст в буфер обмена.
    *
    * Выделение НЕ сбрасывается: курсор остаётся там, где остановился,
-   * а само выделение уйдёт только после последующей вставки - она
-   * выполняется относительно точки курсора (см. insertText()).
+   * а само выделение сбросит последующая вставка - она заменяет
+   * выделение (см. insertText()).
    * @returns {void}
    */
   actionCopy() {
@@ -3191,7 +3229,7 @@ class Bce {
    * устраняет браузерные причуды преобразования DOM-выделения в текст.
    *
    * Выделение НЕ сбрасывается: курсор остаётся там, где остановился,
-   * а само выделение уйдёт только после последующей вставки.
+   * а само выделение сбросит последующая вставка (замена выделения).
    * @param {ClipboardEvent} e
    * @returns {void}
    */

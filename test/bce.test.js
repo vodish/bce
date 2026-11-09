@@ -186,12 +186,22 @@ test("insertText: многострочный", () => {
   assert.deepEqual(ed._cursor, cursor(1, 2));
 });
 
-test("insertText: вставка в точку курсора - выделение не удаляется", () => {
+test("insertText: выделение удаляется перед вставкой (замена выделения)", () => {
   const ed = makeEditor(["hello world"]);
   ed._cursor = cursor(0, 6, 0, 11); // выделено "world", курсор в конце
   ed.insertText("there");
-  assert.deepEqual(vals(ed), ["hello worldthere"]);
-  assert.deepEqual(ed._cursor, cursor(0, 16));
+  assert.deepEqual(vals(ed), ["hello there"]);
+  assert.deepEqual(ed._cursor, cursor(0, 11));
+});
+
+test("insertText: многострочное выделение удаляется перед вставкой", () => {
+  const ed = makeEditor(["aaa", "bbb", "ccc"]);
+  ed._cursor = cursor(0, 1, 2, 1); // выделено "aa\nbbb\ncc"
+  ed.insertText("X\nY");
+  assert.deepEqual(vals(ed), ["aX", "Ycc"]); // хвост "cc" последней строки остаётся
+  // один Ctrl+Z отменяет и удаление, и вставку
+  ed.undo();
+  assert.deepEqual(vals(ed), ["aaa", "bbb", "ccc"]);
 });
 
 /* ============================== handleTab ============================ */
@@ -414,23 +424,24 @@ test("_nativeSelectionText: частичный конец строки - без 
   assert.equal(ed._nativeSelectionText(cursor(0, 0, 1, 2)), "line1\nli");
 });
 
-test("copy → paste: вставка относительно места остановки курсора", () => {
+test("copy → paste: вставка заменяет выделение", () => {
   const ed = makeEditor(["раз", "два", "три"]);
   // выделено "два\n" (от начала "два" до начала "три"), сверху вниз
   ed._cursor = cursor(1, 0, 2, 0);
   const text = ed._nativeSelectionText(ed._cursor); // в буфере обмена
   // Ctrl+C выделение не сбрасывает - сбрасывает только вставка
-  ed.insertText(text); // вставка в точку курсора (начало "три")
-  assert.deepEqual(vals(ed), ["раз", "два", "два", "три"]);
+  ed.insertText(text); // вставка заменяет выделение ("два\n" -> "два\n")
+  assert.deepEqual(vals(ed), ["раз", "два", "три"]);
   // курсор - в конец вставленного, выделение сброшено
-  assert.deepEqual(ed._cursor, cursor(3, 0));
+  assert.deepEqual(ed._cursor, cursor(2, 0));
 });
 
-test("insertText: при выделении снизу вверх вставка в начало выделения", () => {
+test("insertText: при выделении снизу вверх выделение удаляется перед вставкой", () => {
   const ed = makeEditor(["ab"]);
   ed._cursor = { ...cursor(0, 1, 0, 2), backward: true }; // курсор в (0,1)
   ed.insertText("X");
-  assert.deepEqual(vals(ed), ["aXb"]);
+  assert.deepEqual(vals(ed), ["aX"]);
+  assert.deepEqual(ed._cursor, cursor(0, 2));
 });
 
 /* ============================= getLines ============================== */
