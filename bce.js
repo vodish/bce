@@ -283,7 +283,6 @@ class Bce {
       this._resetHistoryBase();
     }
 
-    // Маркер «контейнер занят» для защиты от двойной инициализации
     /** @type {any} */ (this.container).__bce = this;
   }
 
@@ -1974,7 +1973,6 @@ class Bce {
     const c = { begLn: ln, begCol: col, endLn: ln, endCol: col };
     const parts = text.split("\n");
 
-    // Быстрый путь: мелкие вставки идут через синхронный insertText()
     if (parts.length <= chunkSize) {
       this.insertText(text);
       return;
@@ -2460,8 +2458,6 @@ class Bce {
       return true;
     }
 
-    // Без Shift: «умный» Home (первое нажатие - первый непробельный
-    // символ строки, второе - колонка 0).
     if (
       !e.shiftKey &&
       !e.altKey &&
@@ -2966,7 +2962,6 @@ class Bce {
 
     if (hasSelection && cursor.begLn === cursor.endLn && !shift) {
       const line = this.lines[cursor.begLn];
-      // Вырезаем выделенный кусок и вставляем пробелы до таб-стопа
       const cut =
         line.val.substring(0, cursor.begCol) +
         line.val.substring(cursor.endCol);
