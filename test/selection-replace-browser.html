@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Repro: замена многострочного выделения вводом</title>
+<link rel="stylesheet" href="../bce.css">
+<style>
+  body { background:#1e1e1e; color:#eee; font-family:Consolas, monospace; padding:16px; }
+  .ed { min-height:60px; border:1px solid #444; margin-bottom:8px; }
+  #out { white-space:pre-wrap; background:#111; padding:12px; border:1px solid #333; }
+</style>
+</head>
+<body>
+<div id="ed1" class="ed"></div>
+<div id="ed2" class="ed"></div>
+<div id="ed3" class="ed"></div>
+<div id="ed4" class="ed"></div>
+<div id="ed5" class="ed"></div>
+<pre id="out"></pre>
+<script src="../bce.js"></script>
+<script>
+  const out = document.getElementById("out");
+  const log = (s) => { out.textContent += s + "\n"; console.log(s); };
+  const domVals = (ed) => [...ed.content.children].map((d) => d.textContent);
+  const gutterVals = (ed) => [...ed.gutter.children].map((d) => d.textContent);
+  const check = (name, actual, expected) => {
+    const ok = JSON.stringify(actual) === JSON.stringify(expected);
+    log(`${ok ? "PASS" : "FAIL"} ${name}: ${JSON.stringify(actual)}` + (ok ? "" : ` (ожидалось ${JSON.stringify(expected)})`));
+  };
+
+  let n = 0;
+  function make(lines, cursor) {
+    const ed = new Bce("#ed" + (++n), { initialText: "", showLineNumbers: true });
+    ed.setLines(lines.map((val, i) => ({ id: 100 + i, val })));
+    ed.content.focus();
+    ed.setCursor(cursor);
+    return ed;
+  }
+
+  // 1. Выделение "раз\nдва" (от начала до конца второй строки)
+  {
+    const ed = make(["раз", "два", "    три"],
+      { begLn: 0, begCol: 0, endLn: 1, endCol: 3 });
+    log("--- 1: выделение через строки, курсор в конце ---");
+    log("before model: " + JSON.stringify(ed.lines.map((l) => l.val)));
+    document.execCommand("insertText", false, "X");
+    check("model", ed.lines.map((l) => l.val), ["X", "    три"]);
+    check("dom", domVals(ed), ["X", "    три"]);
+    check("gutter", gutterVals(ed), ["1", "2"]);
+    check("ids", ed.lines.map((l) => l.id), [100, 102]);
+    log("getText: " + JSON.stringify(ed.getText()));
+
+    // второй символ подряд - модель/DOM не должны разъехаться
+    document.execCommand("insertText", false, "Y");
+    check("model после 2-го символа", ed.lines.map((l) => l.val), ["XY", "    три"]);
+    check("dom после 2-го символа", domVals(ed), ["XY", "    три"]);
+
+    ed.undo();
+    check("undo", ed.lines.map((l) => l.val), ["X", "    три"]);
+    ed.undo();
+    check("undo 2", ed.lines.map((l) => l.val), ["раз", "два", "    три"]);
+    check("dom после undo 2", domVals(ed), ["раз", "два", "    три"]);
+  }
+
+  // 2. Выделение с непустыми префиксом/суффиксом
+  {
+    const ed = make(["abc", "def", "ghi"],
+      { begLn: 0, begCol: 1, endLn: 2, endCol: 2 });
+    log("--- 2: префикс+суффикс ---");
+    document.execCommand("insertText", false, "X");
+    // удаление "bc" + "\ndef\ngh", вставка X в (0,1): "a" + X + "i"
+    check("model", ed.lines.map((l) => l.val), ["aXi"]);
+    check("dom", domVals(ed), ["aXi"]);
+    check("gutter", gutterVals(ed), ["1"]);
+  }
+
+  // 3. Выделение внутри одной строки
+  {
+    const ed = make(["abc", "def"], { begLn: 0, begCol: 1, endLn: 0, endCol: 2 });
+    log("--- 3: внутри строки ---");
+    document.execCommand("insertText", false, "X");
+    check("model", ed.lines.map((l) => l.val), ["aXc", "def"]);
+    check("dom", domVals(ed), ["aXc", "def"]);
+    check("gutter", gutterVals(ed), ["1", "2"]);
+  }
+
+  // 4. Выделение до начала следующей строки (endCol === 0)
+  {
+    const ed = make(["abc", "def", "ghi"],
+      { begLn: 0, begCol: 0, endLn: 1, endCol: 0 });
+    log("--- 4: endCol === 0 ---");
+    document.execCommand("insertText", false, "X");
+    check("model", ed.lines.map((l) => l.val), ["Xdef", "ghi"]);
+    check("dom", domVals(ed), ["Xdef", "ghi"]);
+    check("gutter", gutterVals(ed), ["1", "2"]);
+  }
+
+  // 5. Обратное выделение (backward): фокус в начале
+  {
+    const ed = make(["раз", "два", "    три"],
+      { begLn: 0, begCol: 0, endLn: 1, endCol: 3, backward: true });
+    log("--- 5: backward ---");
+    document.execCommand("insertText", false, "X");
+    check("model", ed.lines.map((l) => l.val), ["X", "    три"]);
+    check("dom", domVals(ed), ["X", "    три"]);
+    check("gutter", gutterVals(ed), ["1", "2"]);
+  }
+
+  log("--- готово ---");
+</script>
+</body>
+</html>

@@ -884,7 +884,7 @@ class Bce {
   }
 
   /**
-   * Обновляет номера в гуттере и (для небольшого хвоста)
+   * Обновляет номера в гуттере, dataset.lineId и (для небольшого хвоста)
    * индекс текстовых узлов после структурного изменения (insert/delete строк).
    * Для большого хвоста переиндексация дорога - помечаем _nodeMap устаревшим:
    * getCursor() пойдёт резервным путём через TreeWalker (корректно, но
@@ -905,6 +905,16 @@ class Bce {
           this.options.showRecId ? this.lines[i].id : i + 1,
         );
       }
+      // dataset.lineId - источник id строк при следующем onInput. После
+      // браузерной правки узлы могли быть созданы/клонированы браузером,
+      // поэтому id модели и атрибут обязаны совпадать.
+      const div = /** @type {HTMLElement | undefined} */ (
+        this.content.children[i]
+      );
+      if (div instanceof HTMLElement && this.lines[i]) {
+        const id = String(this.lines[i].id);
+        if (div.dataset.lineId !== id) div.dataset.lineId = id;
+      }
     }
     if (total - from <= 2000) {
       for (let i = from; i < total; i++) {
@@ -916,6 +926,98 @@ class Bce {
     } else {
       this._nodeMapDirty = true;
     }
+  }
+
+  /**
+   * Приводит число узлов гуттера в соответствие с числом строк модели.
+   *
+   * Браузер правит только `content`, гуттер остаётся нетронутым, поэтому
+   * после его структурной правки (например, удаления выделенных строк)
+   * в гуттере остаётся старое число строк. Тексты номеров обновляет
+   * _reindexTail().
+   * @returns {void}
+   * @private
+   */
+  _syncGutterCount() {
+    if (!this.gutter) return;
+    while (this.gutter.children.length > this.lines.length) {
+      this.gutter.lastElementChild?.remove();
+    }
+    while (this.gutter.children.length < this.lines.length) {
+      const gi = document.createElement("div");
+      gi.className = "bce-gutter-line";
+      this.gutter.appendChild(gi);
+    }
+  }
+
+  /**
+   * Рендер правки, которую браузер уже применил к DOM самостоятельно (onInput).
+   *
+   * Отличие от _renderPatch(): там DOM соответствует модели ДО применения ops,
+   * поэтому insert/delete применяются к DOM по индексам патча. В onInput DOM
+   * УЖЕ содержит результат правки (новые строки построены из DOM), и повторное
+   * применение структурных операций удаляет/вставляет не те узлы: индексы
+   * патча относятся к старой модели. Именно из-за этого при наборе символа
+   * поверх многострочного выделения пропадала нижняя (невыделенная) строка.
+   *
+   * Здесь: строки replace/insert перерисовываются на месте (подсветка +
+   * dataset.lineId), число узлов гуттера досинхронизируется, хвост
+   * переиндексируется. Структура content не меняется - её уже сделал браузер.
+   * @param {BcePatchOp[]} ops
+   * @returns {void}
+   * @private
+   */
+  _renderBrowserPatch(ops) {
+    if (!this.content || !this.gutter) return;
+    // Если число строк DOM разошлось с моделью (например, браузер удалил все
+    // строки), точечный рендер невозможен - безопаснее полный render().
+    if (this.content.children.length !== this.lines.length) {
+      this.render();
+      return;
+    }
+
+    let prevActiveContent = /** @type {Element | null} */ (null);
+    let prevActiveGutter = /** @type {Element | null} */ (null);
+    if (this._activeLine >= 0) {
+      prevActiveContent = this.content.children[this._activeLine] ?? null;
+      prevActiveGutter = this.gutter.children[this._activeLine] ?? null;
+      this._activeLine = -1;
+    }
+
+    let structuralFrom = -1;
+    for (const op of ops) {
+      if (op.type === "replace") {
+        const n = Array.isArray(op.lines) ? op.lines.length : 1;
+        for (let i = 0; i < n; i++) this.renderLine(op.index + i);
+      } else if (op.type === "insert") {
+        // Узлы уже вставлены браузером - обновляем их на месте
+        const n = Array.isArray(op.lines) ? op.lines.length : 1;
+        for (let i = 0; i < n; i++) this.renderLine(op.index + i);
+        structuralFrom =
+          structuralFrom < 0 ? op.index : Math.min(structuralFrom, op.index);
+      } else if (op.type === "delete") {
+        // Узлы уже удалены браузером - только фиксируем точку переиндексации
+        structuralFrom =
+          structuralFrom < 0 ? op.index : Math.min(structuralFrom, op.index);
+      } else {
+        this.render();
+        return;
+      }
+    }
+
+    if (structuralFrom >= 0) {
+      this._syncGutterCount();
+      // _reindexTail сам решает, помечать ли _nodeMap устаревшим
+      this._reindexTail(structuralFrom);
+    } else {
+      // Только replace: индексы строк не менялись, изменённые строки
+      // переиндексированы в renderLine() - кэш узлов актуален
+      this._nodeMapDirty = false;
+    }
+
+    prevActiveContent?.classList.remove("bce-active");
+    prevActiveGutter?.classList.remove("bce-active");
+    this.updateActiveLine();
   }
 
   /**
@@ -3067,13 +3169,19 @@ class Bce {
         newLines.push({ id: oldLines[idx].id, val: el.textContent || "" });
       });
     } else {
+      // id строки берём из dataset.lineId. Браузер может клонировать узел
+      // вместе с атрибутом (например, при разбиении строки) - дубликат id
+      // сломал бы дифф и undo/redo, поэтому повторно использованный id
+      // заменяем новым.
+      const usedIds = new Set();
       lineEls.forEach((el) => {
         const lineId = parseInt(el.dataset.lineId ?? "0", 10);
-        newLines.push(
-          lineId && oldLinesMap.has(lineId)
-            ? { id: lineId, val: el.textContent || "" }
-            : { id: this.newId(), val: el.textContent || "" },
-        );
+        const id =
+          lineId && oldLinesMap.has(lineId) && !usedIds.has(lineId)
+            ? lineId
+            : this.newId();
+        usedIds.add(id);
+        newLines.push({ id, val: el.textContent || "" });
       });
     }
 
@@ -3111,13 +3219,10 @@ class Bce {
 
     const inverse = this._invertOps(ops);
     this.lines = this._applyOpsTo(this.lines, ops);
-    this._renderPatch(ops);
-
-    if (ops.every((op) => op.type === "replace")) {
-      // Число строк не изменилось: изменённые строки переиндексированы
-      // в renderLine(), неизменённые браузер не трогал - индекс актуален
-      this._nodeMapDirty = false;
-    }
+    // ВАЖНО: не _renderPatch() - DOM уже изменён браузером, повторное
+    // применение структурных операций удалило бы не те узлы (см.
+    // _renderBrowserPatch).
+    this._renderBrowserPatch(ops);
 
     if (cursor) {
       if (deferCursor) {
