@@ -13,14 +13,13 @@
     --bce-attr-name: #cc6666;
     --bce-attr-value: #cc6666;
     --bce-bracket: #cc6666;
-    --bce-attr-eq: #cc6666; /* Цвет для знака = */
+    --bce-attr-eq: #cc6666;
     --bce-comment: #6a9955;
 
     --bce-font-mono: 'JetBrains Mono', 'Roboto Mono', 'Menlo', 'Monaco', 'Courier New', monospace;
 }
 
 .bce-editor {
-    /* position: relative; */
     font-family: var(--bce-font-mono);
     font-size: 15px;
     line-height: 1.5;
@@ -88,7 +87,6 @@
 .bce-line {
     min-height: 24px;
     line-height: 1.5;
-    /* position: relative; */
     white-space: pre-wrap;
     word-wrap: break-word;
     overflow-wrap: break-word;
@@ -104,7 +102,7 @@
 .bce-tag { color: var(--bce-tag); }
 .bce-attr-name { color: var(--bce-attr-name); }
 .bce-attr-value { color: var(--bce-attr-value); }
-.bce-attr-eq { color: var(--bce-attr-eq); } /* Подсветка знака = */
+.bce-attr-eq { color: var(--bce-attr-eq); }
 .bce-bracket { color: var(--bce-bracket); }
 .bce-comment { color: var(--bce-comment); font-style: italic; }
 

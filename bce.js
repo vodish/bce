@@ -163,7 +163,6 @@ class Bce {
     // Защита от двойной инициализации: уничтожаем предыдущий экземпляр,
     // иначе останутся «висящие» обработчики и DOM от старого редактора.
     if (/** @type {any} */ (this.container).__bce) {
-      // console.warn("Bce: контейнер уже инициализирован, предыдущий экземпляр уничтожается");
       /** @type {any} */ (this.container).__bce.destroy();
     }
 
@@ -950,7 +949,6 @@ class Bce {
         structuralFrom =
           structuralFrom < 0 ? op.index : Math.min(structuralFrom, op.index);
       } else {
-        // setLines - замена документа целиком
         this.render();
         return;
       }
@@ -1528,7 +1526,6 @@ class Bce {
           break;
         }
         default: {
-          // setLines - полный откат документа
           inv.push({
             type: "setLines",
             lines: this.lines.map((l) => ({ id: l.id, val: l.val })),
@@ -1578,7 +1575,6 @@ class Bce {
           break;
         }
         default: {
-          // setLines - замена документа целиком
           lines.length = 0;
           for (const l of op.lines ?? []) {
             lines.push({ id: l.id, val: l.val });
@@ -2315,7 +2311,6 @@ class Bce {
     const last = Math.max(cursor.begLn, cursor.endLn);
     const neighbor = dir > 0 ? last + 1 : first - 1;
     if (neighbor < 0 || neighbor >= this.lines.length) return;
-    // Диапазон затрагиваемых строк [from..to] - блок + соседняя строка
     const from = Math.min(first, neighbor);
     const to = Math.max(last, neighbor);
     // Соседняя строка перемещается на противоположный край блока
@@ -2692,7 +2687,6 @@ class Bce {
         /** @type {BcePatchOp[]} */
         const ops = [];
         if (this.lines.length - deleteCount === 0) {
-          // Удалены все строки - заменяем документ одной пустой строкой
           ops.push({
             type: "delete",
             index: 0,
@@ -3528,5 +3522,3 @@ class Bce {
     this.deleteSelection(cursor);
   }
 }
-
-//export default Bce;
