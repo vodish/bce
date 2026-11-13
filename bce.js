@@ -1551,6 +1551,10 @@ class Bce {
     // Индексы клампятся: патч, не совпавший с моделью (например, история
     // рассинхронизировалась), не должен оставлять «дыры» в массиве строк -
     // undefined-строка ломает getText(), рендер и последующие патчи.
+    /**
+     * @param {number} index
+     * @returns {number}
+     */
     const at = (index) => Math.max(0, Math.min(index, lines.length));
     for (const op of ops) {
       switch (op.type) {
