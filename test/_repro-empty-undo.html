@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Repro: undo после замены выделения из пустых строк</title>
+<link rel="stylesheet" href="../bce.css">
+<style>
+  body { background:#1e1e1e; color:#eee; font-family:Consolas, monospace; padding:16px; }
+  #ed1 { min-height:200px; border:1px solid #444; margin-bottom:8px; }
+  #out { white-space:pre-wrap; background:#111; padding:12px; border:1px solid #333; font-size:12px; }
+</style>
+</head>
+<body>
+<div id="ed1"></div>
+<pre id="out"></pre>
+<script src="../bce.js"></script>
+<script>
+  const out = document.getElementById("out");
+  const log = (s) => { out.textContent += s + "\n"; console.log(s); };
+  const tick = () => new Promise((r) => setTimeout(r, 30));
+  const ed = new Bce("#ed1", { initialText: "", showLineNumbers: true });
+  ed.content.focus();
+  ed.setCursor({ begLn: 0, begCol: 0, endLn: 0, endCol: 0 });
+
+  const state = (tag) => {
+    const c = ed.getCursor() || {};
+    log(
+      tag +
+      " | vals " + JSON.stringify(ed.lines.map((l) => l.val)) +
+      " | dom " + JSON.stringify([...ed.content.children].map((d) => d.textContent)) +
+      " | cur " + [c.begLn, c.begCol, c.endLn, c.endCol].join(",") +
+      " | hist " + ed.historyIndex + "/" + ed.history.length +
+      " | ign " + ed.ignoreNextInput
+    );
+  };
+
+  (async () => {
+    state("init");
+
+    // 1. "Добавляем пустые строки" - Enter в редакторе, по одной за задачу
+    for (let i = 0; i < 5; i++) {
+      ed.content.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter", code: "Enter", bubbles: true, cancelable: true,
+      }));
+      await tick();
+    }
+    state("после 5 Enter");
+
+    // 2. Выделяем часть пустых строк (снизу вверх) и вводим символ
+    ed.setCursor({ begLn: 1, begCol: 0, endLn: 4, endCol: 0, backward: true });
+    await tick();
+    document.execCommand("insertText", false, "q");
+    state("после ввода q");
+
+    // 3. Ctrl+Z
+    ed.undo();
+    state("после undo");
+  })();
+</script>
+</body>
+</html>

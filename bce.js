@@ -198,8 +198,16 @@ class Bce {
     this.historyIndex = -1;
     /** @type {number} - максимальная глубина «прошлого» до компакции базы */
     this.maxHistory = 200;
-    /** @type {boolean} */
+    /**
+     * «Пропустить следующее событие input»: правка уже закоммичена в модель
+     * обработчиком клавиши, и повторная обработка того же input не нужна.
+     * Ставится только через _ignoreNextInputOnce() - он же снимает флаг в
+     * конце текущей задачи (см. ниже).
+     * @type {boolean}
+     */
     this.ignoreNextInput = false;
+    /** @type {ReturnType<typeof setTimeout> | 0} - таймер снятия ignoreNextInput */
+    this._ignoreNextInputTimer = 0;
     /** @type {BceOnChangeCallback | null} */
     this._onChangeCallback = null;
 
@@ -320,6 +328,9 @@ class Bce {
     this._activeLine = -1;
     this.cursor = null;
     this._selectionBefore = null;
+    if (this._ignoreNextInputTimer) clearTimeout(this._ignoreNextInputTimer);
+    this._ignoreNextInputTimer = 0;
+    this.ignoreNextInput = false;
     this._onChangeCallback = null;
     this._highlightCache?.clear();
     this._emmetKeys = null;
@@ -1540,23 +1551,29 @@ class Bce {
    * @private
    */
   _applyOpsTo(lines, ops) {
+    // Индексы клампятся: патч, не совпавший с моделью (например, история
+    // рассинхронизировалась), не должен оставлять «дыры» в массиве строк -
+    // undefined-строка ломает getText(), рендер и последующие патчи.
+    const at = (index) => Math.max(0, Math.min(index, lines.length));
     for (const op of ops) {
       switch (op.type) {
         case "insert": {
-          const arr = (Array.isArray(op.lines) ? op.lines : [op.lines]).map(
-            (l) => ({ id: l.id, val: l.val }),
-          );
-          lines.splice(op.index, 0, ...arr);
+          const arr = (Array.isArray(op.lines) ? op.lines : [op.lines])
+            .filter((l) => !!l)
+            .map((l) => ({ id: l.id, val: l.val }));
+          lines.splice(at(op.index), 0, ...arr);
           break;
         }
         case "delete": {
-          lines.splice(op.index, op.count);
+          lines.splice(at(op.index), Math.max(0, op.count));
           break;
         }
         case "replace": {
           const arr = Array.isArray(op.lines) ? op.lines : [op.lines];
           arr.forEach((l, i) => {
-            lines[op.index + i] = { id: l.id, val: l.val };
+            const idx = op.index + i;
+            if (!l || idx < 0 || idx >= lines.length) return;
+            lines[idx] = { id: l.id, val: l.val };
           });
           break;
         }
@@ -2464,7 +2481,7 @@ class Bce {
   _handleSpecialKeys(e) {
     if (e.key === "Tab" || e.key === "tab") {
       e.preventDefault();
-      this.ignoreNextInput = true;
+      this._ignoreNextInputOnce();
       this.handleTab(e.shiftKey);
       return true;
     }
@@ -2476,7 +2493,7 @@ class Bce {
 
     if (e.key === "Enter") {
       e.preventDefault();
-      this.ignoreNextInput = true;
+      this._ignoreNextInputOnce();
       this.handleEnter();
       return true;
     }
@@ -2647,7 +2664,7 @@ class Bce {
         cursor.endCol === this.lines[cursor.begLn].val.length
       ) {
         e.preventDefault();
-        this.ignoreNextInput = true;
+        this._ignoreNextInputOnce();
         const line = this.lines[cursor.begLn];
         // Каноническая форма пустого документа: новый id единственной строки
         const id = this.lines.length === 1 ? this.newId() : line.id;
@@ -2670,7 +2687,7 @@ class Bce {
       }
       if (cursor.endCol === 0 && cursor.endLn > cursor.begLn) {
         e.preventDefault();
-        this.ignoreNextInput = true;
+        this._ignoreNextInputOnce();
         const deleteCount = cursor.endLn - cursor.begLn;
         /** @type {BcePatchOp[]} */
         const ops = [];
@@ -2712,7 +2729,7 @@ class Bce {
     // удаление выделения через deleteSelection().
     if (isSelection) {
       e.preventDefault();
-      this.ignoreNextInput = true;
+      this._ignoreNextInputOnce();
       this.deleteSelection(cursor);
       return;
     }
@@ -2724,7 +2741,7 @@ class Bce {
     // курсор уходит в конец предыдущей строки (или остаётся в (0, 0)).
     if (currentLine.val === "" && this.lines.length > 1) {
       e.preventDefault();
-      this.ignoreNextInput = true;
+      this._ignoreNextInputOnce();
       let newLineIdx = currentLineIdx;
       let newOffset = 0;
       if (currentLineIdx > 0) {
@@ -2745,7 +2762,7 @@ class Bce {
     if (e.key === "Backspace") {
       if (cursor.begCol === 0 && cursor.begLn > 0) {
         e.preventDefault();
-        this.ignoreNextInput = true;
+        this._ignoreNextInputOnce();
         const prevLine = this.lines[cursor.begLn - 1];
         const currLine = this.lines[cursor.begLn];
         const prevLen = prevLine.val.length;
@@ -2774,7 +2791,7 @@ class Bce {
         cursor.begLn < this.lines.length - 1
       ) {
         e.preventDefault();
-        this.ignoreNextInput = true;
+        this._ignoreNextInputOnce();
         const currLine = this.lines[cursor.begLn];
         const nextLine = this.lines[cursor.begLn + 1];
         const currLen = currLine.val.length;
@@ -3233,6 +3250,30 @@ class Bce {
   ================================================================= */
 
   /**
+   * Включает флаг «пропустить следующее событие input» ровно на одну задачу.
+   *
+   * Флаг ставят обработчики клавиш, которые сами правят модель и вызывают
+   * `preventDefault()` (Enter, Tab, Backspace/Delete по выделению). Браузер
+   * после такого `keydown` обычно НЕ присылает `input` - и флаг оставался бы
+   * висеть до следующей реальной правки, из-за чего та не попадала бы в
+   * историю (а Ctrl+Z откатывал бы предыдущее действие).
+   *
+   * Поэтому флаг автоматически снимается в конце текущей задачи: если input
+   * придёт (некоторые браузеры присылают его синхронно), он ещё успеет
+   * увидеть флаг; если нет - флаг не «протечёт» на следующий ввод.
+   * @returns {void}
+   * @private
+   */
+  _ignoreNextInputOnce() {
+    this.ignoreNextInput = true;
+    if (this._ignoreNextInputTimer) clearTimeout(this._ignoreNextInputTimer);
+    this._ignoreNextInputTimer = setTimeout(() => {
+      this._ignoreNextInputTimer = 0;
+      this.ignoreNextInput = false;
+    }, 0);
+  }
+
+  /**
    * Обрабатывает событие `input`: синхронизирует модель с DOM.
    * Также вызывается из `compositionend` (там приходит CompositionEvent).
    * @param {Event} _e - событие input или compositionend (внутри приводится
@@ -3314,11 +3355,14 @@ class Bce {
 
     if (this.ignoreNextInput) {
       this.ignoreNextInput = false;
+      if (this._ignoreNextInputTimer) clearTimeout(this._ignoreNextInputTimer);
+      this._ignoreNextInputTimer = 0;
       if (ops.length) {
         // DOM разошёлся с моделью (нестандартный сценарий) - синхронизируем
         // модель; в норме дифф пуст: правка уже была закоммичена в модель
         this.lines = this._applyOpsTo(this.lines, ops);
       }
+      this._nodeMapDirty = false;
       this._fireOnChange();
       return;
     }

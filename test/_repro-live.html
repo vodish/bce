@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Live: Enter → ввод → Ctrl+Z</title>
+<link rel="stylesheet" href="../bce.css">
+<style>
+  body { background:#1e1e1e; color:#eee; font-family:Consolas, monospace; padding:16px; }
+  #ed1 { min-height:200px; border:1px solid #444; margin-bottom:8px; }
+  #out { white-space:pre-wrap; background:#111; padding:12px; border:1px solid #333; font-size:12px; }
+</style>
+</head>
+<body>
+<div id="ed1"></div>
+<pre id="out"></pre>
+<script src="../bce.js"></script>
+<script>
+  const out = document.getElementById("out");
+  const log = (s) => { out.textContent += s + "\n"; console.log(s); };
+  const ed = new Bce("#ed1", { initialText: "", showLineNumbers: true });
+  ed.content.focus();
+  ed.setCursor({ begLn: 0, begCol: 0, endLn: 0, endCol: 0 });
+  window.__ed = ed;
+
+  let last = "";
+  setInterval(() => {
+    const c = ed.getCursor() || {};
+    const s =
+      "vals " + JSON.stringify(ed.lines.map((l) => l.val)) +
+      " | cur " + [c.begLn, c.begCol, c.endLn, c.endCol].join(",") +
+      " | hist " + ed.historyIndex + "/" + ed.history.length +
+      " | ign " + ed.ignoreNextInput;
+    if (s !== last) { last = s; log(s); }
+  }, 100);
+</script>
+</body>
+</html>
