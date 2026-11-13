@@ -722,6 +722,71 @@ test("курсоры: cursorBefore/cursorAfter восстанавливаютс�
   assert.deepEqual(ed._cursor, cursor(0, 3));
 });
 
+test("undo: после замены выделения каретка встаёт в якорь выделения", () => {
+  // Регрессия: раньше cursorBefore брался из предыдущей записи истории
+  // (или из null у базы), и Ctrl+Z после замены выделения уводил каретку
+  // в начало документа.
+  const ed = makeEditor(["раз", "    два", "три"], { line: cursor(2, 0) });
+  const lineId = ed.lines[1].id;
+  // Выделение сделано снизу вверх: якорь (2,0), фокус (1,0)
+  ed._selectionBefore = {
+    begLn: 1,
+    begCol: 0,
+    endLn: 2,
+    endCol: 0,
+    backward: true,
+  };
+  // Ввод "q" вместо выделения: "раз\nqтри"
+  ed.commitChange(
+    [
+      { type: "replace", index: 1, lines: [{ id: lineId, val: "qтри" }] },
+      { type: "delete", index: 2, count: 1 },
+    ],
+    cursor(1, 1),
+  );
+  assert.deepEqual(vals(ed), ["раз", "qтри"]);
+
+  ed.undo();
+  assert.deepEqual(vals(ed), ["раз", "    два", "три"]);
+  // Начало выделения (якорь), выделение сброшено
+  assert.deepEqual(ed._cursor, cursor(2, 0));
+});
+
+test("undo: выделение «вперёд» - каретка в начало диапазона", () => {
+  const ed = makeEditor(["a", "b", "c"], { line: cursor(0, 0) });
+  ed._selectionBefore = { begLn: 0, begCol: 1, endLn: 2, endCol: 1 };
+  ed.commitChange(
+    [
+      { type: "replace", index: 0, lines: [{ id: ed.lines[0].id, val: "aXc" }] },
+      { type: "delete", index: 1, count: 2 },
+    ],
+    cursor(0, 2),
+  );
+  assert.deepEqual(vals(ed), ["aXc"]);
+
+  ed.undo();
+  assert.deepEqual(vals(ed), ["a", "b", "c"]);
+  assert.deepEqual(ed._cursor, cursor(0, 1));
+});
+
+test("история: курсор «до» берётся из снимка выделения, а не из прошлой правки", () => {
+  const ed = makeEditor(["abc"], { line: cursor(0, 3) });
+  ed.commitChange(
+    [{ type: "replace", index: 0, lines: [{ id: ed.lines[0].id, val: "abcd" }] }],
+    cursor(0, 4),
+  );
+  // Пользователь кликнул в начало строки: снимок обновили события мыши
+  ed._selectionBefore = { begLn: 0, begCol: 0, endLn: 0, endCol: 0 };
+  ed.commitChange(
+    [{ type: "replace", index: 0, lines: [{ id: ed.lines[0].id, val: "Xabcd" }] }],
+    cursor(0, 1),
+  );
+
+  ed.undo();
+  // (0,0) - где была каретка перед вводом, а не (0,4) от предыдущей правки
+  assert.deepEqual(ed._cursor, cursor(0, 0));
+});
+
 /* ============================ diffLines ============================ */
 
 test("diffLines: замена текста в одной строке", () => {

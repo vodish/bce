@@ -17,6 +17,7 @@
 <div id="ed4" class="ed"></div>
 <div id="ed5" class="ed"></div>
 <div id="ed6" class="ed"></div>
+<div id="ed7" class="ed"></div>
 <pre id="out"></pre>
 <script src="../bce.js"></script>
 <script>
@@ -125,6 +126,21 @@
     check("undo 2", ed.lines.map((l) => l.val), ["раз", "два", "    три"]);
     check("dom после undo 2", domVals(ed), ["раз", "два", "    три"]);
     check("gutter после undo 2", gutterVals(ed), ["1", "2", "3"]);
+  }
+
+  // 7. Ctrl+Z после замены выделения: каретка - в начало выделения,
+  //    а не в начало документа (регрессия)
+  {
+    const ed = make(["раз", "    два", "три"],
+      { begLn: 1, begCol: 0, endLn: 2, endCol: 0, backward: true });
+    log("--- 7: undo после замены выделения (позиция каретки) ---");
+    document.execCommand("insertText", false, "q");
+    check("model", ed.lines.map((l) => l.val), ["раз", "qтри"]);
+    ed.undo();
+    check("model после undo", ed.lines.map((l) => l.val), ["раз", "    два", "три"]);
+    const cur = ed.getCursor();
+    check("курсор после undo (якорь выделения)",
+      [cur.begLn, cur.begCol, cur.endLn, cur.endCol], [2, 0, 2, 0]);
   }
 
   log("--- готово ---");

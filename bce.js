@@ -238,6 +238,18 @@ class Bce {
     this.content = /** @type {any} */ (null);
     /** @type {BceCursor | null} */
     this.cursor = null;
+    /**
+     * Выделение (курсор) в состоянии ДО текущей правки. Снимается в
+     * событиях, которые предшествуют изменению DOM (keydown, beforeinput,
+     * paste/cut/drop, keyup/mouseup/click), и при программном setCursor().
+     *
+     * Нужен истории: onInput видит DOM уже изменённым, поэтому позицию «до»
+     * оттуда не прочитать - без снимка undo не знал бы, куда возвращать
+     * каретку (в частности, после замены выделения курсор уезжал в начало
+     * документа вместо начала выделения).
+     * @type {BceCursor | null}
+     */
+    this._selectionBefore = null;
     /** @type {number | undefined} */
     this._selDesiredCol = undefined;
     /** @type {boolean} - идёт ли активная IME-композиция (ввод КРЯ/КПЯ, мобильные клавиатуры) */
@@ -307,6 +319,7 @@ class Bce {
     this.historyIndex = -1;
     this._activeLine = -1;
     this.cursor = null;
+    this._selectionBefore = null;
     this._onChangeCallback = null;
     this._highlightCache?.clear();
     this._emmetKeys = null;
@@ -341,6 +354,12 @@ class Bce {
    * @returns {void}
    */
   setText(text, { resetHistory = false } = {}) {
+    // Выделение до замены документа: после render() DOM-выделение указывает
+    // на старые узлы, и undo должен вернуть каретку в прежнюю позицию.
+    this._captureSelection();
+    const cursorBefore = this._selectionBefore
+      ? { ...this._selectionBefore }
+      : null;
     const oldLines = this.lines.map((l) => ({ id: l.id, val: l.val }));
     this.lines = [];
     this.seq = 0;
@@ -357,9 +376,12 @@ class Bce {
     if (resetHistory) {
       this._resetHistoryBase();
     } else {
-      this._pushEntry([setOp], startCursor, [
-        { type: "setLines", lines: oldLines },
-      ]);
+      this._pushEntry(
+        [setOp],
+        startCursor,
+        [{ type: "setLines", lines: oldLines }],
+        cursorBefore,
+      );
     }
     this._fireOnChange();
   }
@@ -379,6 +401,11 @@ class Bce {
    * @returns {void}
    */
   setLines(lines = [], { resetHistory = false } = {}) {
+    // См. setText(): снимок выделения «до» нужен для корректного undo
+    this._captureSelection();
+    const cursorBefore = this._selectionBefore
+      ? { ...this._selectionBefore }
+      : null;
     const oldLines = this.lines.map((l) => ({ id: l.id, val: l.val }));
     this.lines = lines.map(({ id, val }) => ({ id, val }));
     let maxId = lines.reduce((max, l) => Math.max(max, l.id || 0), 0);
@@ -395,9 +422,12 @@ class Bce {
     if (resetHistory) {
       this._resetHistoryBase();
     } else {
-      this._pushEntry([setOp], startCursor, [
-        { type: "setLines", lines: oldLines },
-      ]);
+      this._pushEntry(
+        [setOp],
+        startCursor,
+        [{ type: "setLines", lines: oldLines }],
+        cursorBefore,
+      );
     }
     this._fireOnChange();
   }
@@ -568,6 +598,8 @@ class Bce {
         const dte = /** @type {DragEvent} */ (e);
         const text = dte.dataTransfer?.getData("text/plain");
         if (!text) return;
+        // Выделение «до» - до перемещения каретки в точку drop
+        this._captureSelection();
         const range =
           /** @type {any} */ (document).caretRangeFromPoint?.(
             dte.clientX,
@@ -607,6 +639,15 @@ class Bce {
       "beforeinput",
       (e) => {
         const inputEvent = /** @type {InputEvent} */ (e);
+        // beforeinput приходит ДО изменения DOM - это последняя точка, где
+        // ещё можно прочитать выделение, которое правка заменит. Для
+        // undo/redo не нужно: они сами восстанавливают позицию каретки.
+        if (
+          inputEvent.inputType !== "historyUndo" &&
+          inputEvent.inputType !== "historyRedo"
+        ) {
+          this._captureSelection();
+        }
         if (inputEvent.inputType === "historyUndo") {
           inputEvent.preventDefault();
           this.undo();
@@ -636,6 +677,9 @@ class Bce {
     const resetHandlers = () => {
       this.updateActiveLine();
       this.resetSelectionAnchor();
+      // Пользователь мог переместить каретку/выделение мышью или клавишами -
+      // запоминаем позицию для истории (см. _selectionBefore)
+      this._captureSelection();
     };
     this.content.addEventListener(
       "keyup",
@@ -1235,6 +1279,36 @@ class Bce {
   }
 
   /**
+   * Запоминает текущее выделение как состояние «до правки».
+   *
+   * Вызывается из событий, которые предшествуют изменению DOM
+   * (`keydown`, `beforeinput`, `paste`/`cut`/`drop`, `keyup`/`mouseup`/`click`),
+   * и из `setCursor()`. `onInput` видит DOM уже изменённым, поэтому снимок
+   * «до» - единственный способ узнать, что было выделено: иначе undo
+   * возвращал каретку в конец предыдущей правки или в начало документа
+   * вместо начала заменённого выделения.
+   *
+   * Без DOM (юнит-тесты модели) - no-op.
+   * @returns {void}
+   * @private
+   */
+  _captureSelection() {
+    if (!this.content || typeof window === "undefined") return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    if (!sel.anchorNode || !this.content.contains(sel.anchorNode)) return;
+    const c = this.getCursor();
+    if (!c) return;
+    this._selectionBefore = {
+      begLn: c.begLn,
+      begCol: c.begCol,
+      endLn: c.endLn,
+      endCol: c.endCol,
+      backward: !!c.backward,
+    };
+  }
+
+  /**
    * Устанавливает курсор / выделение в DOM по данным модели.
    * @param {BceCursor} cursor
    * @returns {void}
@@ -1347,6 +1421,37 @@ class Bce {
     // не применилось (редактор вне фокуса/скрыт), getCursor() вернул бы
     // устаревшую позицию.
     this._setActiveLine(this.getFocus(this.cursor).ln);
+
+    // Программно установленный курсор - это и есть выделение «до» следующей
+    // правки. Перезапись безопасна: onInput/commitChange передают снимок «до»
+    // в _pushEntry явно, ДО вызова setCursor().
+    this._selectionBefore = {
+      begLn,
+      begCol,
+      endLn,
+      endCol,
+      backward: !!cursor.backward,
+    };
+  }
+
+  /**
+   * Схлопывает выделение в его якорь - точку, из которой выделение началось
+   * (при выделении «снизу вверх» это конец диапазона).
+   *
+   * Используется undo: после отката замены выделения каретка должна встать
+   * в начало выделения, а не остаться в начале документа.
+   * @param {BceCursor} cursor
+   * @returns {BceCursor}
+   * @private
+   */
+  _collapseToAnchor(cursor) {
+    const anchor = this.getAnchor(cursor);
+    return {
+      begLn: anchor.ln,
+      begCol: anchor.col,
+      endLn: anchor.ln,
+      endCol: anchor.col,
+    };
   }
 
   /* ================================================================
@@ -1362,7 +1467,11 @@ class Bce {
   _resetHistoryBase() {
     this._baseSnapshot = {
       lines: this.lines.map((l) => ({ id: l.id, val: l.val })),
-      cursor: null,
+      // Курсор базы: если он ещё не известен (инициализация) - начало
+      // документа, иначе undo первого действия оставил бы каретку где попало.
+      cursor: this.cursor
+        ? { ...this.cursor }
+        : { begLn: 0, begCol: 0, endLn: 0, endCol: 0 },
     };
     this.history = [];
     this.historyIndex = -1;
@@ -1541,24 +1650,30 @@ class Bce {
    * отменяют), пишет пару forward/inverse с курсорами «до/после» и при
    * необходимости уплотняет базу (компакция).
    *
-   * Курсор «до» берётся из предыдущей записи стека (или из базы) - это
-   * надёжнее чтения DOM, которое могло уже устареть.
+   * Курсор «до» берётся из снимка выделения, снятого ДО правки
+   * (_selectionBefore), - только он знает про выделение, которое правка
+   * заменила. Фолбэки: явно переданный cursorBefore → предыдущая запись
+   * стека → курсор базы.
    *
    * @param {BcePatchOp[]} forwardOps
    * @param {BceCursor | null} cursorAfter - курсор после применения forward
    * @param {BcePatchOp[]} [inverse] - заранее построенный inverse
    *                                   (по умолчанию строится автоматически)
+   * @param {BceCursor | null} [cursorBefore] - курсор/выделение до правки
    * @returns {void}
    * @private
    */
-  _pushEntry(forwardOps, cursorAfter, inverse) {
+  _pushEntry(forwardOps, cursorAfter, inverse, cursorBefore) {
     inverse ??= this._invertOps(forwardOps);
-    const cursorBefore =
-      this.historyIndex >= 0
-        ? this.history[this.historyIndex].cursorAfter
-        : this._baseSnapshot
-          ? this._baseSnapshot.cursor
-          : null;
+    if (!cursorBefore) {
+      cursorBefore = this._selectionBefore
+        ? { ...this._selectionBefore }
+        : this.historyIndex >= 0
+          ? this.history[this.historyIndex].cursorAfter
+          : this._baseSnapshot
+            ? this._baseSnapshot.cursor
+            : null;
+    }
 
     if (this.historyIndex < this.history.length - 1) {
       this.history = this.history.slice(0, this.historyIndex + 1);
@@ -1570,6 +1685,11 @@ class Bce {
       cursorAfter: cursorAfter ?? null,
     });
     this.historyIndex = this.history.length - 1;
+
+    // После правки актуальное выделение - cursorAfter: оно станет
+    // «состоянием до» для следующей записи, если пользователь не сдвинет
+    // каретку (тогда снимок обновят события мыши/клавиатуры).
+    if (cursorAfter) this._selectionBefore = { ...cursorAfter };
 
     if (this.historyIndex >= this.maxHistory) this._compactHistory();
   }
@@ -1609,17 +1729,26 @@ class Bce {
    */
   commitChange(forwardOps, cursor = null) {
     if (!forwardOps.length) return;
+    // Выделение «до»: DOM ещё не тронут, getCursor() вернёт актуальную
+    // позицию (в т.ч. выделение, которое сейчас будет заменено)
+    this._captureSelection();
+    const cursorBefore = this._selectionBefore
+      ? { ...this._selectionBefore }
+      : null;
     const inverse = this._invertOps(forwardOps);
     this.lines = this._applyOpsTo(this.lines, forwardOps);
     this._renderPatch(forwardOps);
     if (cursor) this.setCursor(cursor);
     this.updateActiveLine();
-    this._pushEntry(forwardOps, cursor, inverse);
+    this._pushEntry(forwardOps, cursor, inverse, cursorBefore);
     this._fireOnChange();
   }
 
   /**
    * Откат на один шаг: применение inverse-патча (курсор - cursorBefore).
+   *
+   * Если правка заменила выделение, cursorBefore - это само выделение;
+   * каретка встаёт в его начало (якорь), а выделение сбрасывается.
    * @returns {void}
    */
   undo() {
@@ -1629,7 +1758,7 @@ class Bce {
     this.lines = this._applyOpsTo(this.lines, entry.inverse);
     this._renderPatch(entry.inverse);
     const cursor = entry.cursorBefore;
-    if (cursor) this.setCursor(cursor);
+    if (cursor) this.setCursor(this._collapseToAnchor(cursor));
     this.updateActiveLine();
     this._fireOnChange();
   }
@@ -1896,6 +2025,16 @@ class Bce {
   insertTextChunked(text, { chunkSize = 5000 } = {}) {
     const cursor = this.getCursor();
     if (!cursor) return;
+    // Снимок выделения «до»: вставка идёт по кадрам, и к моменту finalize()
+    // setCursor() уже перезапишет _selectionBefore - история запомнила бы
+    // неверную позицию «до» (undo вернул бы каретку не туда).
+    const cursorBefore = {
+      begLn: cursor.begLn,
+      begCol: cursor.begCol,
+      endLn: cursor.endLn,
+      endCol: cursor.endCol,
+      backward: !!cursor.backward,
+    };
     const hasSel =
       cursor.begLn !== cursor.endLn || cursor.begCol !== cursor.endCol;
     // Вставка в НАЧАЛО выделения (cursor.beg нормализован) - семантика
@@ -1956,7 +2095,7 @@ class Bce {
       };
       this.setCursor(finalCursor);
       this.updateActiveLine();
-      this._pushEntry(allForward, finalCursor, allInverse);
+      this._pushEntry(allForward, finalCursor, allInverse, cursorBefore);
       this._inserting = false;
       this._fireOnChange();
     };
@@ -2273,6 +2412,9 @@ class Bce {
       e.preventDefault();
       return;
     }
+    // Снимок выделения «до» правки: keydown приходит раньше input, когда
+    // DOM ещё не изменён (в т.ч. для замены выделения символом)
+    this._captureSelection();
     if (!e.shiftKey) this.resetSelectionAnchor();
 
     if (this._handleActionKeys(e)) return;
@@ -3106,6 +3248,13 @@ class Bce {
     if (ie?.isComposing || this._composing) return;
     if (this._inserting) return;
 
+    // Выделение ДО правки: beforeinput/keydown уже сохранили его в
+    // _selectionBefore. Читаем в локальную переменную сразу - ниже
+    // setCursor() перезапишет _selectionBefore позицией ПОСЛЕ правки.
+    const cursorBefore = this._selectionBefore
+      ? { ...this._selectionBefore }
+      : null;
+
     // DOM уже изменён браузером до этого события - индекс текстовых узлов
     // (_nodeMap) мог устареть. До ближайшего render() getCursor() обязан
     // идти резервным путём через TreeWalker.
@@ -3218,7 +3367,7 @@ class Bce {
         this.setCursor(cursor);
       }
     }
-    this._pushEntry(ops, cursor, inverse);
+    this._pushEntry(ops, cursor, inverse, cursorBefore);
     this._fireOnChange();
   }
 
@@ -3234,6 +3383,9 @@ class Bce {
    */
   onPaste(e) {
     e.preventDefault();
+    // Выделение «до»: вставка заменит его - undo должен вернуть каретку
+    // в начало выделения
+    this._captureSelection();
     const text = (
       e.clipboardData || /** @type {any} */ (window).clipboardData
     ).getData("text");
@@ -3295,6 +3447,14 @@ class Bce {
     }
     const cursor = this.getCursor();
     if (!cursor) return;
+    // Выделение «до»: cut удалит его - undo должен вернуть каретку в начало
+    this._selectionBefore = {
+      begLn: cursor.begLn,
+      begCol: cursor.begCol,
+      endLn: cursor.endLn,
+      endCol: cursor.endCol,
+      backward: !!cursor.backward,
+    };
     if (cursor.begLn === cursor.endLn && cursor.begCol === cursor.endCol)
       return; // пустое выделение - нативно вырезать нечего
 
