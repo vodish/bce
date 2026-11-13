@@ -2954,7 +2954,8 @@ class Bce {
       // «Умный» Home: первое нажатие - первый непробельный символ,
       // второе (если курсор уже на нём) - колонка 0.
       const smartCol = this._firstNonWsCol(moving.ln);
-      const targetCol = moving.col === smartCol && moving.col !== 0 ? 0 : smartCol;
+      const targetCol =
+        moving.col === smartCol && moving.col !== 0 ? 0 : smartCol;
       setCursorAndReturn(moving.ln, targetCol);
       this._selDesiredCol = undefined;
       return;
@@ -3522,3 +3523,5 @@ class Bce {
     this.deleteSelection(cursor);
   }
 }
+
+//export default Bce;
