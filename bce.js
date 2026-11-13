@@ -815,12 +815,25 @@ class Bce {
    * DOM-узлов; setLines → полный render().
    *
    * @param {BcePatchOp[]} ops
+   * @param {Object}   [opts]
+   * @param {boolean}  [opts.domSynced=false] - DOM уже содержит результат
+   *   правки (её применил браузер, см. onInput). Структурные операции тогда
+   *   НЕ применяются к DOM повторно: индексы патча относятся к модели ДО
+   *   правки, а DOM уже соответствует модели ПОСЛЕ неё - повторный
+   *   delete/insert удалил бы не те узлы. Строки insert/replace
+   *   перерисовываются на месте, гуттер досинхронизируется по количеству.
    * @returns {void}
    * @private
    */
-  _renderPatch(ops) {
+  _renderPatch(ops, { domSynced = false } = {}) {
     // Без DOM (юнит-тесты модели) - рендер пропускается
     if (!this.content || !this.gutter) return;
+    // При domSynced число строк DOM могло разойтись с моделью (например,
+    // браузер удалил все строки) - точечный рендер невозможен, нужен полный.
+    if (domSynced && this.content.children.length !== this.lines.length) {
+      this.render();
+      return;
+    }
     let structuralFrom = -1;
 
     // Активная строка: запоминаем узлы по ссылке (индексы после
@@ -839,34 +852,45 @@ class Bce {
         for (let i = 0; i < n; i++) this.renderLine(op.index + i);
       } else if (op.type === "insert") {
         const lines = Array.isArray(op.lines) ? op.lines : [op.lines];
-        const refLine = /** @type {Element | null} */ (
-          this.content.children[op.index] ?? null
-        );
-        const refGutter = /** @type {Element | null} */ (
-          this.gutter.children[op.index] ?? null
-        );
-        // Батч-вставка: узлы создаются и заполняются ДО вставки в документ
-        // (_fillLineNode/_fillGutterNode), затем каждая порция попадает
-        // в DOM одним insertBefore через DocumentFragment - один reflow
-        // на всю порцию вместо N.
-        const contentFrag = document.createDocumentFragment();
-        const gutterFrag = document.createDocumentFragment();
-        for (let i = 0; i < lines.length; i++) {
-          const div = document.createElement("div");
-          const gi = document.createElement("div");
-          this._fillLineNode(div, op.index + i);
-          this._fillGutterNode(gi, op.index + i);
-          contentFrag.appendChild(div);
-          gutterFrag.appendChild(gi);
+        if (domSynced) {
+          // Узлы уже вставлены браузером - обновляем их на месте
+          for (let i = 0; i < lines.length; i++) {
+            this.renderLine(op.index + i);
+          }
+        } else {
+          const refLine = /** @type {Element | null} */ (
+            this.content.children[op.index] ?? null
+          );
+          const refGutter = /** @type {Element | null} */ (
+            this.gutter.children[op.index] ?? null
+          );
+          // Батч-вставка: узлы создаются и заполняются ДО вставки в документ
+          // (_fillLineNode/_fillGutterNode), затем каждая порция попадает
+          // в DOM одним insertBefore через DocumentFragment - один reflow
+          // на всю порцию вместо N.
+          const contentFrag = document.createDocumentFragment();
+          const gutterFrag = document.createDocumentFragment();
+          for (let i = 0; i < lines.length; i++) {
+            const div = document.createElement("div");
+            const gi = document.createElement("div");
+            this._fillLineNode(div, op.index + i);
+            this._fillGutterNode(gi, op.index + i);
+            contentFrag.appendChild(div);
+            gutterFrag.appendChild(gi);
+          }
+          this.content.insertBefore(contentFrag, refLine);
+          this.gutter.insertBefore(gutterFrag, refGutter);
         }
-        this.content.insertBefore(contentFrag, refLine);
-        this.gutter.insertBefore(gutterFrag, refGutter);
         structuralFrom =
           structuralFrom < 0 ? op.index : Math.min(structuralFrom, op.index);
       } else if (op.type === "delete") {
-        for (let i = 0; i < op.count; i++) {
-          this.content.children[op.index]?.remove();
-          this.gutter.children[op.index]?.remove();
+        // При domSynced узлы уже удалены браузером - фиксируем только точку
+        // переиндексации
+        if (!domSynced) {
+          for (let i = 0; i < op.count; i++) {
+            this.content.children[op.index]?.remove();
+            this.gutter.children[op.index]?.remove();
+          }
         }
         structuralFrom =
           structuralFrom < 0 ? op.index : Math.min(structuralFrom, op.index);
@@ -877,15 +901,28 @@ class Bce {
       }
     }
 
-    if (structuralFrom >= 0) this._reindexTail(structuralFrom);
+    if (structuralFrom >= 0) {
+      // _reindexTail сам решает, помечать ли _nodeMap устаревшим
+      this._reindexTail(structuralFrom);
+    } else if (domSynced) {
+      // Только replace: индексы строк не менялись, изменённые строки
+      // переиндексированы в renderLine() - кэш узлов актуален
+      this._nodeMapDirty = false;
+    }
     prevActiveContent?.classList.remove("bce-active");
     prevActiveGutter?.classList.remove("bce-active");
     this.updateActiveLine();
   }
 
   /**
-   * Обновляет номера в гуттере, dataset.lineId и (для небольшого хвоста)
-   * индекс текстовых узлов после структурного изменения (insert/delete строк).
+   * Обновляет номера в гуттере и (для небольшого хвоста) индекс текстовых
+   * узлов после структурного изменения (insert/delete строк).
+   *
+   * Заодно приводит число узлов гуттера к числу строк модели: браузер правит
+   * только `content`, поэтому после его структурной правки (onInput) в
+   * гуттере остаётся старое количество строк. Лишние узлы удаляются с конца,
+   * недостающие добавляются в конец (их номера заполнит цикл ниже).
+   *
    * Для большого хвоста переиндексация дорога - помечаем _nodeMap устаревшим:
    * getCursor() пойдёт резервным путём через TreeWalker (корректно, но
    * медленнее) до ближайшего полного render().
@@ -896,26 +933,33 @@ class Bce {
   _reindexTail(from) {
     const total = this.lines.length;
     this._activeLine = -1;
+
+    // Количество узлов гуттера = количеству строк модели. Их индексы не
+    // меньше from (from - индекс операции в СТАРОЙ модели, а старый гуттер
+    // не короче старой модели), поэтому добавленные узлы попадут под цикл
+    // нумерации ниже.
+    const gutter = this.gutter;
+    let gc = gutter.children.length;
+    while (gc > total) {
+      gutter.lastElementChild?.remove();
+      gc--;
+    }
+    while (gc < total) {
+      const gi = document.createElement("div");
+      gi.className = "bce-gutter-line";
+      gutter.appendChild(gi);
+      gc++;
+    }
+
     for (let i = from; i < total; i++) {
-      const g = /** @type {HTMLElement | undefined} */ (
-        this.gutter.children[i]
-      );
+      const g = /** @type {HTMLElement | undefined} */ (gutter.children[i]);
       if (g && this.lines[i]) {
         g.textContent = String(
           this.options.showRecId ? this.lines[i].id : i + 1,
         );
       }
-      // dataset.lineId - источник id строк при следующем onInput. После
-      // браузерной правки узлы могли быть созданы/клонированы браузером,
-      // поэтому id модели и атрибут обязаны совпадать.
-      const div = /** @type {HTMLElement | undefined} */ (
-        this.content.children[i]
-      );
-      if (div instanceof HTMLElement && this.lines[i]) {
-        const id = String(this.lines[i].id);
-        if (div.dataset.lineId !== id) div.dataset.lineId = id;
-      }
     }
+
     if (total - from <= 2000) {
       for (let i = from; i < total; i++) {
         const div = /** @type {HTMLElement | undefined} */ (
@@ -923,101 +967,12 @@ class Bce {
         );
         if (div instanceof HTMLElement) this._indexLineNodes(div, i);
       }
+      // Префикс до `from` не менялся, хвост переиндексирован - карта узлов
+      // снова полностью актуальна
+      this._nodeMapDirty = false;
     } else {
       this._nodeMapDirty = true;
     }
-  }
-
-  /**
-   * Приводит число узлов гуттера в соответствие с числом строк модели.
-   *
-   * Браузер правит только `content`, гуттер остаётся нетронутым, поэтому
-   * после его структурной правки (например, удаления выделенных строк)
-   * в гуттере остаётся старое число строк. Тексты номеров обновляет
-   * _reindexTail().
-   * @returns {void}
-   * @private
-   */
-  _syncGutterCount() {
-    if (!this.gutter) return;
-    while (this.gutter.children.length > this.lines.length) {
-      this.gutter.lastElementChild?.remove();
-    }
-    while (this.gutter.children.length < this.lines.length) {
-      const gi = document.createElement("div");
-      gi.className = "bce-gutter-line";
-      this.gutter.appendChild(gi);
-    }
-  }
-
-  /**
-   * Рендер правки, которую браузер уже применил к DOM самостоятельно (onInput).
-   *
-   * Отличие от _renderPatch(): там DOM соответствует модели ДО применения ops,
-   * поэтому insert/delete применяются к DOM по индексам патча. В onInput DOM
-   * УЖЕ содержит результат правки (новые строки построены из DOM), и повторное
-   * применение структурных операций удаляет/вставляет не те узлы: индексы
-   * патча относятся к старой модели. Именно из-за этого при наборе символа
-   * поверх многострочного выделения пропадала нижняя (невыделенная) строка.
-   *
-   * Здесь: строки replace/insert перерисовываются на месте (подсветка +
-   * dataset.lineId), число узлов гуттера досинхронизируется, хвост
-   * переиндексируется. Структура content не меняется - её уже сделал браузер.
-   * @param {BcePatchOp[]} ops
-   * @returns {void}
-   * @private
-   */
-  _renderBrowserPatch(ops) {
-    if (!this.content || !this.gutter) return;
-    // Если число строк DOM разошлось с моделью (например, браузер удалил все
-    // строки), точечный рендер невозможен - безопаснее полный render().
-    if (this.content.children.length !== this.lines.length) {
-      this.render();
-      return;
-    }
-
-    let prevActiveContent = /** @type {Element | null} */ (null);
-    let prevActiveGutter = /** @type {Element | null} */ (null);
-    if (this._activeLine >= 0) {
-      prevActiveContent = this.content.children[this._activeLine] ?? null;
-      prevActiveGutter = this.gutter.children[this._activeLine] ?? null;
-      this._activeLine = -1;
-    }
-
-    let structuralFrom = -1;
-    for (const op of ops) {
-      if (op.type === "replace") {
-        const n = Array.isArray(op.lines) ? op.lines.length : 1;
-        for (let i = 0; i < n; i++) this.renderLine(op.index + i);
-      } else if (op.type === "insert") {
-        // Узлы уже вставлены браузером - обновляем их на месте
-        const n = Array.isArray(op.lines) ? op.lines.length : 1;
-        for (let i = 0; i < n; i++) this.renderLine(op.index + i);
-        structuralFrom =
-          structuralFrom < 0 ? op.index : Math.min(structuralFrom, op.index);
-      } else if (op.type === "delete") {
-        // Узлы уже удалены браузером - только фиксируем точку переиндексации
-        structuralFrom =
-          structuralFrom < 0 ? op.index : Math.min(structuralFrom, op.index);
-      } else {
-        this.render();
-        return;
-      }
-    }
-
-    if (structuralFrom >= 0) {
-      this._syncGutterCount();
-      // _reindexTail сам решает, помечать ли _nodeMap устаревшим
-      this._reindexTail(structuralFrom);
-    } else {
-      // Только replace: индексы строк не менялись, изменённые строки
-      // переиндексированы в renderLine() - кэш узлов актуален
-      this._nodeMapDirty = false;
-    }
-
-    prevActiveContent?.classList.remove("bce-active");
-    prevActiveGutter?.classList.remove("bce-active");
-    this.updateActiveLine();
   }
 
   /**
@@ -3160,11 +3115,19 @@ class Bce {
       this.content.querySelectorAll(".bce-line")
     );
     const oldLines = this.lines;
-    const oldLinesMap = new Map(oldLines.map((l) => [l.id, l]));
     /** @type {Rec[]} */
     const newLines = [];
+    /**
+     * Индексы DOM-строк, которым выдан новый id (узел создан/клонирован
+     * браузером). renderLine() проставляет dataset.lineId только строкам из
+     * replace/insert-операций, поэтому такие узлы синхронизируем точечно -
+     * вместо O(tail) прохода по всему хвосту документа.
+     * @type {number[]}
+     */
+    const freshIdIdx = [];
 
     if (lineEls.length === oldLines.length) {
+      // Число строк не изменилось - id берём по позиции, Map не нужен
       lineEls.forEach((el, idx) => {
         newLines.push({ id: oldLines[idx].id, val: el.textContent || "" });
       });
@@ -3173,13 +3136,17 @@ class Bce {
       // вместе с атрибутом (например, при разбиении строки) - дубликат id
       // сломал бы дифф и undo/redo, поэтому повторно использованный id
       // заменяем новым.
+      const oldLinesMap = new Map(oldLines.map((l) => [l.id, l]));
       const usedIds = new Set();
-      lineEls.forEach((el) => {
+      lineEls.forEach((el, idx) => {
         const lineId = parseInt(el.dataset.lineId ?? "0", 10);
-        const id =
-          lineId && oldLinesMap.has(lineId) && !usedIds.has(lineId)
-            ? lineId
-            : this.newId();
+        let id;
+        if (lineId && oldLinesMap.has(lineId) && !usedIds.has(lineId)) {
+          id = lineId;
+        } else {
+          id = this.newId();
+          freshIdIdx.push(idx);
+        }
         usedIds.add(id);
         newLines.push({ id, val: el.textContent || "" });
       });
@@ -3187,6 +3154,7 @@ class Bce {
 
     if (newLines.length === 1 && newLines[0].val === "") {
       newLines[0].id = this.newId();
+      if (!freshIdIdx.includes(0)) freshIdIdx.push(0);
     }
     if (newLines.length === 0) {
       // Браузер убрал все .bce-line - восстанавливаем каноническую форму
@@ -3219,10 +3187,26 @@ class Bce {
 
     const inverse = this._invertOps(ops);
     this.lines = this._applyOpsTo(this.lines, ops);
-    // ВАЖНО: не _renderPatch() - DOM уже изменён браузером, повторное
-    // применение структурных операций удалило бы не те узлы (см.
-    // _renderBrowserPatch).
-    this._renderBrowserPatch(ops);
+    // ВАЖНО: domSynced - DOM уже изменён браузером. Повторное применение
+    // структурных операций удалило бы не те узлы: индексы патча относятся
+    // к модели ДО правки.
+    this._renderPatch(ops, { domSynced: true });
+
+    // Точечно проставляем dataset.lineId строкам с новым id: renderLine()
+    // делает это только для строк из replace/insert-операций, а строка с
+    // новым id могла в них не попасть (например, при совпадении текста).
+    if (this.content) {
+      for (const idx of freshIdIdx) {
+        const el = /** @type {HTMLElement | undefined} */ (
+          this.content.children[idx]
+        );
+        const line = this.lines[idx];
+        if (el && line) {
+          const id = String(line.id);
+          if (el.dataset.lineId !== id) el.dataset.lineId = id;
+        }
+      }
+    }
 
     if (cursor) {
       if (deferCursor) {

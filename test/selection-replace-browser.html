@@ -16,6 +16,7 @@
 <div id="ed3" class="ed"></div>
 <div id="ed4" class="ed"></div>
 <div id="ed5" class="ed"></div>
+<div id="ed6" class="ed"></div>
 <pre id="out"></pre>
 <script src="../bce.js"></script>
 <script>
@@ -104,6 +105,26 @@
     check("model", ed.lines.map((l) => l.val), ["X", "    три"]);
     check("dom", domVals(ed), ["X", "    три"]);
     check("gutter", gutterVals(ed), ["1", "2"]);
+  }
+
+  // 6. Удаление всего содержимого (браузер убирает все .bce-line)
+  {
+    const ed = make(["раз", "два", "    три"],
+      { begLn: 0, begCol: 0, endLn: 2, endCol: 7 });
+    log("--- 6: удаление всего содержимого ---");
+    document.execCommand("delete");
+    check("model", ed.lines.map((l) => l.val), [""]);
+    check("dom", domVals(ed), [""]);
+    check("gutter", gutterVals(ed), ["1"]);
+    document.execCommand("insertText", false, "Z");
+    check("model после ввода", ed.lines.map((l) => l.val), ["Z"]);
+    check("dom после ввода", domVals(ed), ["Z"]);
+    ed.undo();
+    check("undo", ed.lines.map((l) => l.val), [""]);
+    ed.undo();
+    check("undo 2", ed.lines.map((l) => l.val), ["раз", "два", "    три"]);
+    check("dom после undo 2", domVals(ed), ["раз", "два", "    три"]);
+    check("gutter после undo 2", gutterVals(ed), ["1", "2", "3"]);
   }
 
   log("--- готово ---");
